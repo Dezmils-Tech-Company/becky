@@ -1,51 +1,47 @@
-import { getIdToken as getClientIdToken, signOutUser as clientSignOutUser } from './client'
-import type { User } from 'firebase/auth'
+// Client-side Firebase Auth helper functions
+import {
+  onAuthStateChanged,
+  signOut,
+  type User,
+  type Unsubscribe
+} from 'firebase/auth'
+import { auth } from './client'
 
 /**
- * Gets the current Firebase ID token
- * @returns Promise that resolves to the ID token string
+ * Gets a fresh Firebase ID token for the currently signed-in user.
+ * Forces a token refresh to ensure it's not expired.
+ *
+ * @returns The current user's ID token.
+ * @throws Error if no user is currently authenticated.
  */
 export async function getIdToken(): Promise<string> {
-  return getClientIdToken()
+  const currentUser = auth.currentUser
+  if (!currentUser) {
+    throw new Error('No authenticated user')
+  }
+  return currentUser.getIdToken(true)
 }
 
 /**
- * Signs out the user and clears the session cookie
- * This calls Firebase signOut and then POSTs to /api/auth/logout
+ * Signs the user out of Firebase and clears the server-side session cookie.
+ * Side effects: calls Firebase `signOut`, then POSTs to `/api/auth/logout`.
+ *
+ * @throws Error if the logout request to the server fails.
  */
 export async function signOutUser(): Promise<void> {
-  try {
-    // Sign out from Firebase
-    await clientSignOutUser()
-
-    // Additionally call our logout endpoint to clear session cookie
-    const response = await fetch('/api/auth/logout', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-
-    if (!response.ok) {
-      console.warn('Failed to call logout API:', await response.text())
-    }
-  } catch (error) {
-    console.error('Error during sign out:', error)
-    // Still proceed with Firebase sign out even if API call fails
+  await signOut(auth)
+  const res = await fetch('/api/auth/logout', { method: 'POST' })
+  if (!res.ok) {
+    throw new Error('Failed to clear session on server')
   }
 }
 
 /**
- * Sets up an authentication state change listener
- * @param callback - Function to call when auth state changes
- * @returns Unsubscribe function
+ * Subscribes to Firebase auth state changes.
+ *
+ * @param callback - Called with the current `User` (or `null` if signed out).
+ * @returns An unsubscribe function to stop listening.
  */
-// export function onAuthChange(callback: (User | null) => void) {
-//   // Import firebase here to avoid circular dependencies
-//   // eslint-disable-next-line @typescript-eslint/no-var-requires
-//   const { getAuth, onAuthStateChanged } = require('firebase/auth')
-
-//   const auth = getAuth()
-//   const unsubscribe = onAuthStateChanged(auth, callback)
-//   return unsubscribe
-// }
+export function onAuthChange(callback: (user: User | null) => void): Unsubscribe {
+  return onAuthStateChanged(auth, callback)
+}
