@@ -2,18 +2,18 @@ import { z } from 'zod'
 
 // Validate and parse environment variables
 const envSchema = z.object({
-  // Firebase Client (public) — deferred until Task 3 (optional for now)
-  NEXT_PUBLIC_FIREBASE_API_KEY: z.string().optional(),
-  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: z.string().optional(),
-  NEXT_PUBLIC_FIREBASE_PROJECT_ID: z.string().optional(),
-  NEXT_PUBLIC_FIREBASE_APP_ID: z.string().optional(),
-  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: z.string().optional(),
-  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: z.string().optional(),
+  // Firebase Client (public) — required from Task 3 onward
+  NEXT_PUBLIC_FIREBASE_API_KEY: z.string().min(1, 'NEXT_PUBLIC_FIREBASE_API_KEY is required'),
+  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: z.string().min(1, 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN is required'),
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID: z.string().min(1, 'NEXT_PUBLIC_FIREBASE_PROJECT_ID is required'),
+  NEXT_PUBLIC_FIREBASE_APP_ID: z.string().min(1, 'NEXT_PUBLIC_FIREBASE_APP_ID is required'),
+  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: z.string().min(1, 'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID is required'),
+  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: z.string().min(1, 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET is required'),
 
-  // Firebase Admin (server-only) — deferred until Task 3 (optional for now)
-  FIREBASE_ADMIN_PROJECT_ID: z.string().optional(),
-  FIREBASE_ADMIN_CLIENT_EMAIL: z.string().optional(),
-  FIREBASE_ADMIN_PRIVATE_KEY: z.string().optional(),
+  // Firebase Admin (server-only) — required from Task 3 onward
+  FIREBASE_ADMIN_PROJECT_ID: z.string().min(1, 'FIREBASE_ADMIN_PROJECT_ID is required'),
+  FIREBASE_ADMIN_CLIENT_EMAIL: z.string().min(1, 'FIREBASE_ADMIN_CLIENT_EMAIL is required'),
+  FIREBASE_ADMIN_PRIVATE_KEY: z.string().min(1, 'FIREBASE_ADMIN_PRIVATE_KEY is required'),
 
   // MongoDB
   MONGODB_URI: z.string().url('MongoDB URI must be a valid URL'),
@@ -43,7 +43,7 @@ const envSchema = z.object({
   // App
   NEXT_PUBLIC_APP_URL: z.string().url('APP URL must be valid'),
   SESSION_COOKIE_NAME: z.string().default('__session'),
-  SESSION_COOKIE_MAX_AGE: z.string().default('1209600').transform(val => parseInt(val, 10)),
+  SESSION_COOKIE_MAX_AGE: z.string().default('1209600').transform(val => parseInt(val, 10))
 })
 
 // Parse environment variables
@@ -57,5 +57,5 @@ if (!_env.success) {
 export const env = _env.data
 
 // Helper functions
-export const isDev = () => process.env.NODE_ENV === 'development'
-export const isProd = () => process.env.NODE_ENV === 'production'
+export const isDev = (): boolean => process.env.NODE_ENV === 'development'
+export const isProd = (): boolean => process.env.NODE_ENV === 'production'

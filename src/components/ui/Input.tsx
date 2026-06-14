@@ -1,6 +1,6 @@
 import type { ChangeEvent, FocusEvent, ReactNode } from 'react'
 
-interface InputProps {
+export interface InputProps {
   id?: string
   type?: string
   value: string

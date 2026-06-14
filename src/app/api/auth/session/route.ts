@@ -49,9 +49,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { upsert: true, new: true }
     )
 
+    // Fetch the user to get the current role (in case it was already set)
+    const user = await User.findOne({ uid }).lean()
+
     // Write audit log
     await writeAuditLog({
-      actor: { uid, email: email || '', role: 'customer' },
+      actor: { uid, email: email || '', role: user?.role || 'customer' },
       action: 'LOGIN',
       resource: 'User',
       resourceId: uid,
@@ -59,7 +62,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     })
 
     // Set cookie on response
-    const response = NextResponse.json({ success: true, data: { uid, email, role: 'customer' } })
+    const response = NextResponse.json({ success: true, data: { uid, email, role: user?.role || 'customer' } })
     response.cookies.set(SESSION_COOKIE_NAME, sessionCookie, {
       httpOnly: true,
       secure: isProd(),

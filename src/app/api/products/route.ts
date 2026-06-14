@@ -3,6 +3,10 @@ import { connectDB } from '../../../lib/mongodb/client'
 import { Product } from '../../../models/Product'
 import { createProductSchema, productQuerySchema } from '../../../schemas/product.schema'
 import { DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from '../../../config/constants'
+import { requireSession } from '../../../lib/session/get-session'
+import { writeAuditLog } from '../../../lib/audit/logger'
+import { User } from '../../../models'
+import { Types } from 'mongoose'
 
 /**
  * GET /api/products
@@ -78,8 +82,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         pages
       }
     })
-  } catch (error: unknown) {
-    console.error('Error fetching products:', error)
+  } catch (err) {
+    console.error('Error fetching products:', err)
     return NextResponse.json(
       {
         success: false,
@@ -96,11 +100,32 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 /**
  * POST /api/products
  * Create a new product.
- * TEMP: auth added in Task 5
+ * Requires admin role.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
+    // Check session and require admin role
+    let session
+    try {
+      session = await requireSession(request)
+    } catch (err) {
+      if (err !== null && typeof err === 'object' && 'code' in err && err.code === 'UNAUTHORIZED') {
+        return NextResponse.json(
+          { success: false, error: { code: 'UNAUTHORIZED', message: 'Unauthorized' } },
+          { status: 401 }
+        )
+      }
+      throw err
+    }
+
     await connectDB()
+    const user = await User.findOne({ uid: session.uid })
+    if (!user || user.role !== 'admin') {
+      return NextResponse.json(
+        { success: false, error: { code: 'FORBIDDEN', message: 'Forbidden' } },
+        { status: 403 }
+      )
+    }
 
     const body = await request.json()
     const parsed = createProductSchema.safeParse(body)
@@ -120,7 +145,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       )
     }
 
-    // TEMP: auth added in Task 5 - currently unauthenticated
     console.log('Creating product with data:', parsed.data)
     let newProduct
     try {
@@ -134,6 +158,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     try {
       await newProduct.save()
       console.log('Product saved successfully')
+
+      // Write audit log
+      await writeAuditLog({
+        actor: { uid: user.uid, email: user.email, role: user.role },
+        action: 'CREATE',
+        resource: 'Product',
+        resourceId: newProduct._id.toString(),
+        meta: {
+          name: newProduct.name,
+          price: newProduct.price,
+          category: newProduct.category,
+          isActive: newProduct.isActive
+        }
+      })
     } catch (saveError) {
       console.error('Error saving Product:', saveError)
       throw saveError
@@ -146,17 +184,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
       { status: 201 }
     )
-  } catch (error: unknown) {
-    console.error('Error creating product:', error)
-    // Return more detailed error for debugging
+  } catch (err) {
+    console.error('Error creating product:', err)
     return NextResponse.json(
       {
         success: false,
         error: {
           code: 'INTERNAL_ERROR',
-          message: 'Failed to create product',
-          // Include error details in development only
-          ...(error instanceof Error && process.env.NODE_ENV === 'development' && { details: error.message, stack: error.stack })
+          message: 'Failed to create product'
         }
       },
       { status: 500 }

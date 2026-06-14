@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ReactNode, MouseEventHandler } from 'react'
 
 interface ButtonProps {
   children: ReactNode
@@ -7,7 +7,7 @@ interface ButtonProps {
   disabled?: boolean
   className?: string
   type?: 'button' | 'submit' | 'reset'
-  onClick?: () => void
+  onClick?: MouseEventHandler<HTMLButtonElement>
 }
 
 export const Button = ({
