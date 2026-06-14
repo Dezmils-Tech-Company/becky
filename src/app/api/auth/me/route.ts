@@ -5,7 +5,7 @@ import { connectDB } from '../../../../lib/mongodb/client'
 import { User } from '../../../../models'
 import { Types } from 'mongoose'
 import { env } from '../../../../config/env'
-import { authLimiter, checkRateLimit } from '../../../../lib/rate-limit'
+import { authLimiter, apiLimiter, checkRateLimit } from '../../../../lib/rate-limit'
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   // Check rate limit first
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
                     req.headers.get('x-real-ip') ||
                     'anonymous'
 
-  await checkRateLimit(authLimiter, identifier)
+  await checkRateLimit(apiLimiter, identifier)
 
   try {
     // Require valid session

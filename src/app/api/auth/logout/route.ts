@@ -14,7 +14,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
                     req.headers.get('x-real-ip') ||
                     'anonymous'
 
-  await checkRateLimit(authLimiter, identifier)
+  try {
+    await checkRateLimit(authLimiter, identifier)
+  } catch (error: unknown) {
+    if ((error as any).code === 'RATE_LIMITED') {
+      return NextResponse.json(
+        { success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests' } },
+        { status: 429,
+          headers: (error as any).headers || {}
+        }
+      )
+    }
+    throw error
+  }
 
   try {
     // Get session to audit logout
@@ -39,15 +51,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     return response
   } catch (error: unknown) {
-    if ((error as any).code === 'RATE_LIMITED') {
-      return NextResponse.json(
-        { success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests' } },
-        { status: 429,
-          headers: (error as any).headers || {}
-        }
-      )
-    }
-
     console.error('Logout error:', error)
     return NextResponse.json(
       { success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to logout' } },
