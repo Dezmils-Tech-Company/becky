@@ -72,8 +72,8 @@ export const RegisterForm = () => {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div>
-        <label htmlFor="displayName" className="mb-2 block text-sm font-medium text-muted-foreground">
+      <div className="space-y-2">
+        <label htmlFor="displayName" className="block text-sm font-semibold text-slate-700">
           Display name
         </label>
         <Input
@@ -84,11 +84,12 @@ export const RegisterForm = () => {
           placeholder="Your display name"
           required
           autoComplete="name"
+          className="rounded-[20px] border border-pink-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-pink-400 focus:ring-pink-300"
         />
       </div>
 
-      <div>
-        <label htmlFor="email" className="mb-2 block text-sm font-medium text-muted-foreground">
+      <div className="space-y-2">
+        <label htmlFor="email" className="block text-sm font-semibold text-slate-700">
           Email address
         </label>
         <Input
@@ -99,11 +100,12 @@ export const RegisterForm = () => {
           placeholder="you@example.com"
           required
           autoComplete="email"
+          className="rounded-[20px] border border-pink-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-pink-400 focus:ring-pink-300"
         />
       </div>
 
-      <div>
-        <label htmlFor="password" className="mb-2 block text-sm font-medium text-muted-foreground">
+      <div className="space-y-2">
+        <label htmlFor="password" className="block text-sm font-semibold text-slate-700">
           Password
         </label>
         <Input
@@ -115,11 +117,12 @@ export const RegisterForm = () => {
           required
           autoComplete="new-password"
           minLength={8}
+          className="rounded-[20px] border border-pink-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-pink-400 focus:ring-pink-300"
         />
       </div>
 
-      <div>
-        <label htmlFor="confirmPassword" className="mb-2 block text-sm font-medium text-muted-foreground">
+      <div className="space-y-2">
+        <label htmlFor="confirmPassword" className="block text-sm font-semibold text-slate-700">
           Confirm password
         </label>
         <Input
@@ -130,25 +133,37 @@ export const RegisterForm = () => {
           placeholder="••••••••"
           required
           autoComplete="new-password"
+          className="rounded-[20px] border border-pink-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-pink-400 focus:ring-pink-300"
         />
       </div>
 
       {error && (
-        <div className="bg-destructive/10 text-destructive rounded-md p-4">
-          <p className="text-sm">{error}</p>
+        <div className="rounded-2xl border border-pink-100 bg-pink-50 px-4 py-3 text-sm text-pink-700">
+          {error}
         </div>
       )}
 
-      <Button type="submit" disabled={loading} className="w-full">
+      <Button
+        type="submit"
+        disabled={loading}
+        className="w-full rounded-[20px] bg-pink-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-pink-500/20 hover:bg-pink-700 focus:ring-pink-400"
+      >
         {loading ? (
           <>
-            <Spinner className="mr-2 h-4 w-4" />
+            <Spinner className="mr-2 h-4 w-4 text-white" />
             Creating account...
           </>
         ) : (
           'Create account'
         )}
       </Button>
+
+      <p className="text-center text-xs text-slate-500">
+        Already have an account?{' '}
+        <a href="/login" className="font-semibold text-pink-600 hover:text-pink-700">
+          Sign in
+        </a>
+      </p>
     </form>
   )
 }

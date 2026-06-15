@@ -44,3 +44,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+TASK_5_COMPLETED.MD
+TASK_5_SUMMARY.md

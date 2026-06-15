@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { ShoppingBag } from 'lucide-react'
 import { useCart } from '../../hooks/useCart'
 import { useUIStore } from '../../store/ui.store'
-import type { CartState } from '../../store/cart.store'
+import { useRouter } from 'next/navigation'
 import type { UIState } from '../../store/ui.store'
 import { formatKES, formatUSD } from '../../lib/utils/currency'
 import { Badge } from '../ui/Badge'
@@ -24,6 +24,7 @@ export interface ProductCardData {
 
 interface ProductCardProps {
   product: ProductCardData
+  showAddToCart?: boolean
 }
 
 /**
@@ -31,9 +32,10 @@ interface ProductCardProps {
  * "Add to cart" button. Clicking the card (outside the button) navigates
  * to the product's detail page.
  */
-export function ProductCard({ product }: ProductCardProps): React.ReactNode {
+export function ProductCard({ product, showAddToCart = true }: ProductCardProps): React.ReactNode {
   const { addItem: addToCart } = useCart()
   const showToast = useUIStore((state: UIState) => state.showToast)
+  const router = useRouter()
 
   const formattedPrice =
     product.currency === 'KES' ? formatKES(product.price) : formatUSD(product.price)
@@ -45,7 +47,7 @@ export function ProductCard({ product }: ProductCardProps): React.ReactNode {
     e.preventDefault()
     e.stopPropagation()
 
-    if (isOutOfStock) return
+    if (isOutOfStock || !showAddToCart) return
 
     addToCart({
       productId: product._id,
@@ -96,15 +98,32 @@ export function ProductCard({ product }: ProductCardProps): React.ReactNode {
         <h3 className="line-clamp-2 text-sm font-medium text-neutral-900">{product.name}</h3>
         <p className="text-base font-semibold text-pink-600">{formattedPrice}</p>
 
-        <Button
-          onClick={handleAddToCart}
-          disabled={isOutOfStock}
-          variant="primary"
-          size="sm"
-          className="mt-auto w-full"
-        >
-          {isOutOfStock ? 'Out of stock' : 'Add to cart'}
-        </Button>
+        {showAddToCart ? (
+          <Button
+            onClick={handleAddToCart}
+            disabled={isOutOfStock}
+            variant="primary"
+            size="sm"
+            className="mt-auto w-full"
+          >
+            {isOutOfStock ? 'Out of stock' : 'Add to cart'}
+          </Button>
+        ) : (
+          <div className="mt-auto">
+            <Button
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                router.push(`/products/${encodeURIComponent(product.slug)}`)
+              }}
+              variant="secondary"
+              size="sm"
+              className="w-full"
+            >
+              View product
+            </Button>
+          </div>
+        )}
       </div>
     </Link>
   )

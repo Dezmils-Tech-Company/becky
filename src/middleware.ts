@@ -1,17 +1,30 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { verifySessionCookie } from './lib/session/verify-session'
 import { SESSION_COOKIE_NAME } from './config/constants'
+import { isDev } from './config/env'
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  const publicPaths = ['/', '/auth/', '/api/auth/', '/_next/', '/favicon.ico', '/public/']
+  // Public paths that don't require authentication
+  const publicPaths = [
+    '/',
+    '/auth/',
+    '/api/auth/',
+    '/_next/',
+    '/favicon.ico',
+    '/public/',
+    '/api/health' // Health check endpoint
+  ]
   const isPublicPath = publicPaths.some((path) => pathname.startsWith(path))
   if (isPublicPath) return NextResponse.next()
 
+  // Check for session cookie
   const sessionCookie = req.cookies.get(SESSION_COOKIE_NAME)?.value
 
   if (!sessionCookie) {
+    // No session cookie - unauthorized
     if (pathname.startsWith('/api/')) {
       return NextResponse.json(
         { success: false, error: { code: 'UNAUTHORIZED', message: 'Unauthorized' } },
@@ -23,6 +36,74 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
+  // Verify session cookie and extract session data
+  let session
+  try {
+    session = await verifySessionCookie(sessionCookie)
+  } catch (error) {
+    // Invalid or expired session
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid session' } },
+        { status: 401 }
+      )
+    }
+    const loginUrl = new URL('/auth/login', req.url)
+    loginUrl.searchParams.set('redirect', pathname)
+    return NextResponse.redirect(loginUrl)
+  }
+
+  // If session is null, redirect to login
+  if (!session) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid session' } },
+        { status: 401 }
+      )
+    }
+    const loginUrl = new URL('/auth/login', req.url)
+    loginUrl.searchParams.set('redirect', pathname)
+    return NextResponse.redirect(loginUrl)
+  }
+
+  // Admin-specific protections (inline verifySessionCookie + role check for /admin/** page routes)
+  if (pathname.startsWith('/admin/') && !pathname.startsWith('/api/admin/')) {
+    // For admin page routes, check if user is admin
+    if (session.role !== 'admin') {
+      // Redirect non-admins to home page
+      return NextResponse.redirect(new URL('/', req.url))
+    }
+  }
+
+  // Path-based protections for specific areas
+  const protectedPaths = [
+    '/admin/:path*',
+    '/dashboard/:path*',
+    '/orders/:path*',
+    '/profile/:path*',
+    '/api/admin/:path*'
+  ]
+
+  // Check if path matches any protected pattern
+  const isProtectedPath = protectedPaths.some(pattern => {
+    // Simple implementation - in production you might want to use path-to-regexp or similar
+    if (pattern.endsWith(':path*')) {
+      const basePath = pattern.slice(0, -6) // Remove ':path*'
+      return pathname.startsWith(basePath)
+    }
+    return pathname === pattern
+  })
+
+  // For API paths under protected areas, we still need to check authentication
+  // but the role checking is done in the individual route handlers
+  if (isProtectedPath && pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/')) {
+    // Already verified session above, so we can proceed
+    // Role-specific checks for API routes are handled in the route handlers themselves
+    return NextResponse.next()
+  }
+
+  // For page routes under protected areas, we've already verified session
+  // Additional role checks for specific page routes are handled in the layout/components
   return NextResponse.next()
 }
 

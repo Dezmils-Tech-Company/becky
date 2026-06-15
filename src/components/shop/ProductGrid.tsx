@@ -1,9 +1,10 @@
-import { ProductCard } from './ProductCard'
+﻿import { ProductCard } from './ProductCard'
 import type { ProductCardData } from './ProductCard'
 
 interface ProductGridProps {
   products: ProductCardData[]
   loading?: boolean
+  showAddToCart?: boolean
 }
 
 const SKELETON_COUNT = 8
@@ -12,7 +13,7 @@ const SKELETON_COUNT = 8
  * Responsive grid of product cards: 2 columns on mobile, 3 on tablet,
  * 4 on desktop. Shows skeleton placeholders while `loading` is true.
  */
-export function ProductGrid({ products, loading = false }: ProductGridProps): React.ReactNode {
+export function ProductGrid({ products, loading = false, showAddToCart = true }: ProductGridProps): React.ReactNode {
   if (loading) {
     return (
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
@@ -46,7 +47,7 @@ export function ProductGrid({ products, loading = false }: ProductGridProps): Re
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
       {products.map((product) => (
-        <ProductCard key={product._id} product={product} />
+        <ProductCard key={product._id} product={product} showAddToCart={showAddToCart} />
       ))}
     </div>
   )

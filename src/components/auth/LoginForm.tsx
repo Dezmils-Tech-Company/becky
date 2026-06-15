@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button, Input } from '@/components/ui'
@@ -24,10 +25,8 @@ export const LoginForm = () => {
     setError(null)
 
     try {
-      // Get Firebase ID token
       const idToken = await getIdToken()
 
-      // Call our session endpoint
       const response = await fetch('/api/auth/session', {
         method: 'POST',
         headers: {
@@ -41,10 +40,7 @@ export const LoginForm = () => {
         throw new Error(errorData.error?.message || 'Login failed')
       }
 
-      // Update auth state
       await authLogin()
-
-      // Redirect to dashboard or return URL
       router.push('/dashboard')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
@@ -56,8 +52,8 @@ export const LoginForm = () => {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div>
-        <label htmlFor="email" className="mb-2 block text-sm font-medium text-muted-foreground">
+      <div className="space-y-2">
+        <label htmlFor="email" className="block text-sm font-semibold text-slate-700">
           Email address
         </label>
         <Input
@@ -68,13 +64,19 @@ export const LoginForm = () => {
           placeholder="you@example.com"
           required
           autoComplete="email"
+          className="rounded-[20px] border border-pink-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-pink-400 focus:ring-pink-300"
         />
       </div>
 
-      <div>
-        <label htmlFor="password" className="mb-2 block text-sm font-medium text-muted-foreground">
-          Password
-        </label>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor="password" className="block text-sm font-semibold text-slate-700">
+            Password
+          </label>
+          <Link href="/forgot-password" className="text-xs font-bold text-pink-600 hover:text-pink-700">
+            Forgot password?
+          </Link>
+        </div>
         <Input
           id="password"
           type="password"
@@ -83,25 +85,37 @@ export const LoginForm = () => {
           placeholder="••••••••"
           required
           autoComplete="current-password"
+          className="rounded-[20px] border border-pink-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-pink-400 focus:ring-pink-300"
         />
       </div>
 
       {error && (
-        <div className="bg-destructive/10 text-destructive rounded-md p-4">
-          <p className="text-sm">{error}</p>
+        <div className="rounded-2xl border border-pink-100 bg-pink-50 px-4 py-3 text-sm text-pink-700">
+          {error}
         </div>
       )}
 
-      <Button type="submit" disabled={loading} className="w-full">
+      <Button
+        type="submit"
+        disabled={loading}
+        className="w-full rounded-[20px] bg-pink-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-pink-500/20 hover:bg-pink-700 focus:ring-pink-400"
+      >
         {loading ? (
           <>
-            <Spinner className="mr-2 h-4 w-4" />
+            <Spinner className="mr-2 h-4 w-4 text-white" />
             Signing in...
           </>
         ) : (
           'Sign in'
         )}
       </Button>
+
+      <p className="text-center text-xs text-slate-500">
+        New here?{' '}
+        <Link href="/register" className="font-semibold text-pink-600 hover:text-pink-700">
+          Create an account
+        </Link>
+      </p>
     </form>
   )
 }

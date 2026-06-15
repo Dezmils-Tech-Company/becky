@@ -1,26 +1,24 @@
 import type { ChangeEvent, FocusEvent, ReactNode } from 'react'
 
-export interface InputProps {
+export interface TextareaProps {
   id?: string
   name?: string
-  type?: string
   value: string
-  onChange: (e: ChangeEvent<HTMLInputElement>) => void
-  onBlur?: (e: FocusEvent<HTMLInputElement>) => void
+  onChange: (e: ChangeEvent<HTMLTextAreaElement>) => void
+  onBlur?: (e: FocusEvent<HTMLTextAreaElement>) => void
   placeholder?: string
   className?: string
   disabled?: boolean
   required?: boolean
   autoComplete?: string
-  min?: string | number
   minLength?: number
+  rows?: number
   icon?: ReactNode
 }
 
-export const Input = ({
+export const Textarea = ({
   id,
   name,
-  type = 'text',
   value,
   onChange,
   onBlur,
@@ -29,10 +27,10 @@ export const Input = ({
   disabled = false,
   required = false,
   autoComplete = 'off',
-  min,
   minLength,
-  icon,
-}: InputProps) => {
+  rows = 4,
+  icon
+}: TextareaProps) => {
   const baseClasses = `
     flex h-10 w-full rounded-md border border-input bg-background px-3 py-2
     text-sm ring-offset-background file:border-0 file:bg-transparent
@@ -45,10 +43,9 @@ export const Input = ({
     <div className="flex items-center space-x-2">
       {id && <span className="sr-only">{id}</span>}
       {icon && <span className="h-5 w-5">{icon}</span>}
-      <input
+      <textarea
         id={id}
         name={name}
-        type={type}
         value={value}
         onChange={onChange}
         onBlur={onBlur}
@@ -57,8 +54,8 @@ export const Input = ({
         disabled={disabled}
         required={required}
         autoComplete={autoComplete}
-        min={min}
         minLength={minLength}
+        rows={rows}
       />
     </div>
   )

@@ -35,10 +35,10 @@ const envSchema = z.object({
   DARAJA_CALLBACK_URL: z.string().optional(),
   DARAJA_ENV: z.enum(['sandbox', 'production']).optional(),
 
-  // Cloudinary — deferred until Task 11 (optional for now)
-  NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: z.string().optional(),
-  CLOUDINARY_API_KEY: z.string().optional(),
-  CLOUDINARY_API_SECRET: z.string().optional(),
+  // Cloudinary — required from Task 11 onward
+  NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: z.string().min(1, 'NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME is required'),
+  CLOUDINARY_API_KEY: z.string().min(1, 'CLOUDINARY_API_KEY is required'),
+  CLOUDINARY_API_SECRET: z.string().min(1, 'CLOUDINARY_API_SECRET is required'),
 
   // App
   NEXT_PUBLIC_APP_URL: z.string().url('APP URL must be valid'),
