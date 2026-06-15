@@ -1,9 +1,4 @@
-import { v2 as cloudinary } from 'cloudinary'
 import { env } from '@/config/env'
-
-cloudinary.config({
-  cloud_name: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-})
 
 /**
  * Get an optimized Cloudinary URL for an image
@@ -25,23 +20,23 @@ export function getCloudinaryUrl(
   const {
     width,
     height,
-    crop,
-    quality,
+    crop = 'auto',
+    quality = 'auto',
     format,
-    fetchFormat,
+    fetchFormat = 'auto',
   } = options
 
-  // Build transformation object
-  const transformations: any = {}
-  if (width) transformations.width = width
-  if (height) transformations.height = height
-  if (crop) transformations.crop = crop
-  if (quality) transformations.quality = quality
-  if (format) transformations.format = format
-  if (fetchFormat) transformations.fetchFormat = fetchFormat
+  // Build transformation string
+  const transforms: string[] = []
+  if (width) transforms.push(`w_${width}`)
+  if (height) transforms.push(`h_${height}`)
+  if (crop) transforms.push(`c_${crop}`)
+  if (quality) transforms.push(`q_${quality}`)
+  if (format) transforms.push(`f_${format}`)
+  if (fetchFormat) transforms.push(`fl_${fetchFormat}`)
 
-  // Generate URL
-  return cloudinary.url(publicId, {
-    transformation: Object.keys(transformations).length > 0 ? transformations : [],
-  })
+  const transformPath = transforms.length > 0 ? `/${transforms.join(',')}` : ''
+
+  // Generate Cloudinary CDN URL
+  return `https://res.cloudinary.com/${env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload${transformPath}/${publicId}`
 }

@@ -9,7 +9,7 @@ import { useState } from 'react'
 
 export function BottomNav(): React.ReactNode {
   const pathname = usePathname()
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, logout } = useAuth()
   const { itemCount } = useCart()
   const [showMenu, setShowMenu] = useState(false)
 
@@ -108,13 +108,15 @@ export function BottomNav(): React.ReactNode {
                       >
                         Dashboard
                       </Link>
-                      <Link
-                        href="/api/auth/logout"
-                        className="block rounded-2xl px-4 py-3 text-sm text-rose-600 transition hover:bg-slate-100"
-                        onClick={() => setShowMenu(false)}
+                      <button
+                        onClick={() => {
+                          setShowMenu(false)
+                          logout()
+                        }}
+                        className="w-full rounded-2xl px-4 py-3 text-left text-sm text-rose-600 transition hover:bg-slate-100"
                       >
                         Logout
-                      </Link>
+                      </button>
                     </>
                   ) : (
                     <>
