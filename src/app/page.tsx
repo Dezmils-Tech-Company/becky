@@ -37,29 +37,24 @@ export default async function Home(): Promise<React.ReactNode> {
       </header>
 
       {/* Hero Section */}
-      <section className="border-b border-neutral-100 px-6 py-12 sm:py-16">
-        <div className="mx-auto max-w-7xl text-center">
-          <h2 className="text-4xl font-bold text-neutral-900 sm:text-5xl">
-            Explore Our Collection
-          </h2>
-          <p className="mt-4 text-lg text-neutral-600">
-            Browse thousands of beauty products. Add to cart and checkout with confidence.
-          </p>
+      <section className="relative aspect-[4/5] sm:aspect-[16/7] w-full border-b border-neutral-100 bg-[url('/WhatsApp%20Image%202026-06-18%20at%2010.52.37.jpeg')] bg-cover bg-center bg-no-repeat">
+        {/* Subtle gradient overlay for CTA legibility */}
+        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/50 via-black/15 to-transparent" />
 
-          <div className="mt-8 flex items-center justify-center gap-4  ">
-            <Link
-              href="/products"
-              className="inline-flex items-center justify-center rounded-lg bg-pink-600 px-8 py-3 flex-wrap-reverse text-base font-semibold text-white transition hover:bg-pink-700 "
-            >
-              shop now
-            </Link>
-            <Link
-              href="/register"
-              className="inline-flex items-center justify-center rounded-lg border border-neutral-300 px-8 py-3 text-base font-semibold text-neutral-900 transition hover:bg-neutral-50 "
-            >
-              Sign in
-            </Link>
-          </div>
+        {/* CTA Buttons - Positioned at bottom */}
+        <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-3">
+          <Link
+            href="/products"
+            className="inline-flex items-center justify-center whitespace-nowrap rounded-lg bg-pink-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-pink-700 sm:px-8 sm:py-3 sm:text-base"
+          >
+            Shop now
+          </Link>
+          <Link
+            href="/register"
+            className="inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-white/30 px-5 py-2 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/20 sm:px-8 sm:py-3 sm:text-base"
+          >
+            Sign in
+          </Link>
         </div>
       </section>
 

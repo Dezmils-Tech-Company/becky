@@ -33,8 +33,15 @@ export default function ProductForm({ productId }: ProductFormProps) {
     setIsLoading(true)
 
     try {
+      // Build the full payload, including images, before validating.
+      // images must always be an array (never undefined) to satisfy the schema.
+      const dataToValidate = {
+        ...formData,
+        images: uploadUrl ? [uploadUrl] : [],
+      }
+
       // Validate form data client-side first for fast feedback
-      const parsed = createProductSchema.safeParse(formData)
+      const parsed = createProductSchema.safeParse(dataToValidate)
       if (!parsed.success) {
         const { fieldErrors } = parsed.error.flatten()
         setError('Invalid form data. Please check the fields.')
@@ -43,10 +50,7 @@ export default function ProductForm({ productId }: ProductFormProps) {
         return
       }
 
-      const payload = {
-        ...parsed.data,
-        imageUrl: uploadUrl || null,
-      }
+      const payload = parsed.data
 
       const endpoint = productId ? `/api/products/${productId}` : '/api/products'
       const method = productId ? 'PATCH' : 'POST'
@@ -59,7 +63,15 @@ export default function ProductForm({ productId }: ProductFormProps) {
 
       if (!res.ok) {
         const data = await res.json().catch(() => null)
-        setError(data?.error || 'Failed to save product. Please try again.')
+        // The API's error shape is { success: false, error: { code, message, details } }.
+        // Always render error.message (a string) — never the raw error object itself,
+        // which React cannot render as a child and will throw on.
+        const message = data?.error?.message
+        const details = data?.error?.details
+        if (details) {
+          console.error('Server validation details:', details)
+        }
+        setError(typeof message === 'string' ? message : 'Failed to save product. Please try again.')
         setIsLoading(false)
         return
       }

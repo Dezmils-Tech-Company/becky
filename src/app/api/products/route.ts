@@ -132,6 +132,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (!parsed.success) {
       const { fieldErrors } = parsed.error.flatten()
+      // Log the actual rejected fields server-side. Previously this branch
+      // returned a 400 with no terminal output at all, making it impossible
+      // to tell which field failed without manually inspecting the browser's
+      // Network tab every time.
+      console.error('Product validation failed:', {
+        receivedBody: body,
+        fieldErrors
+      })
       return NextResponse.json(
         {
           success: false,

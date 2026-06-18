@@ -1,11 +1,11 @@
 "use client"
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Trash2, Edit3 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import DataTable from '@/components/admin/DataTable'
 
-export default async function AdminProductsPage() {
+export default function AdminProductsPage() {
   const [products, setProducts] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -37,12 +37,14 @@ export default async function AdminProductsPage() {
     }
   }
 
-  // In a real implementation, we would fetch products on mount
-  // For now, we'll simulate with empty array since we don't have the actual API endpoint
-  // Actually, we do have /api/products from Task 2, so let's use it
-
-  // Call fetchProducts on mount would go here in a useEffect
-  // For simplicity in this implementation, we'll leave it empty and rely on the DataTable showing empty state
+  // Load products on mount. This was previously defined but never called —
+  // the page always rendered an empty list regardless of what was in the
+  // database. A Client Component can't be `async` itself (that's a Server
+  // Component-only feature), so data fetching here has to go through an
+  // effect instead.
+  useEffect(() => {
+    fetchProducts()
+  }, [])
 
   const columns = [
     { key: 'name', label: 'Name', sortable: true },
