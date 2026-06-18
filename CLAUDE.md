@@ -1,474 +1,314 @@
-# Coding Agent Master Prompt
-## Full-Stack E-Commerce Platform: Next.js · Firebase · MongoDB · M-Pesa · Stripe
+# Coding Agent Master Prompt — v2 (Corrective Patch Pass)
+## Full-Stack E-Commerce Platform: Next.js 16 · Firebase · MongoDB · M-Pesa · Stripe
 
 ---
 
-## ROLE & MISSION
+## CONTEXT: WHY THIS REWRITE EXISTS
 
-You are a senior full-stack engineer building a production-grade e-commerce platform from a fully scaffolded file structure. Every file you build must be complete — no stubs, no `// TODO`, no placeholder logic. Each file must be immediately deployable and importable by the files that depend on it.
+The original master prompt produced a working scaffold, but a manual debugging pass against the live codebase surfaced a cluster of real bugs — mostly around session handling, runtime mismatches, and a perf-hostile request pattern. This version is **not a from-scratch rebuild**. It is a corrective patch guide: a sequence of fix-tasks to run against the *existing* codebase, each scoped tightly enough to verify in isolation, followed by a hardened version of the original task list for any net-new work.
 
-**This prompt is organized as a sequence of TASKS, not phases.** Each task produces a small, independently testable slice of working functionality — front end and back end together where applicable. You must complete, build, and verifiably test each task before moving to the next. Tasks that depend on third-party API keys (M-Pesa/Daraja, Stripe, Cloudinary) are deliberately pushed to the end, behind mocked/stubbed equivalents, so the core app is fully testable without external credentials.
+Treat every item in **PART A** as a required patch before continuing any new feature work from the original task list (preserved in **PART B** with corrections folded in). Do not skip PART A — several of these bugs are silent (they don't crash, they just silently produce wrong behavior), and later tasks will be built on top of the broken assumption if not fixed first.
 
-**After each task:**
+---
+
+## ROLE & MISSION (unchanged)
+
+You are a senior full-stack engineer. Every file must be complete — no stubs, no `// TODO`, no placeholder logic, unless explicitly marked `// TEMP` with the task number where it gets upgraded. Each file must be immediately deployable and importable by the files that depend on it.
+
+**After each task in this document:**
 1. Run `npx tsc --noEmit` — must pass with zero errors.
-2. Run any unit/integration tests relevant to the task.
-3. Provide a short manual test script (curl commands, or steps to click through in the browser) so the human can verify the task works end-to-end.
-4. Output a brief summary: what was built, what was tested, and how it was verified.
-5. Wait for confirmation ("continue" / "next") before starting the next task, unless explicitly told to proceed through multiple tasks automatically.
+2. Run relevant tests.
+3. Provide a manual test script (curl or click-path) to verify end-to-end.
+4. Summarize what was built/fixed, what was tested, how it was verified.
+5. Wait for confirmation before proceeding, unless told to run through multiple tasks automatically.
 
-Do not ask clarifying questions — all decisions are specified below. Where the spec is silent, apply the principle that best serves security and maintainability, and note the decision made in your task summary.
-
----
-
-## TECH STACK (LOCKED — do not substitute)
-
-| Layer | Technology |
-|---|---|
-| Framework | Next.js 14+ (App Router, TypeScript strict mode) |
-| Auth | Firebase Auth (client SDK) + Firebase Admin SDK (server) |
-| Database | MongoDB Atlas via Mongoose ODM |
-| Validation | Zod — every API input, every env var |
-| Payments (mobile) | Safaricom Daraja API v2 — M-Pesa STK Push |
-| Payments (card) | Stripe — PaymentIntent + webhooks |
-| Cache / Rate limit | Upstash Redis |
-| File storage | Cloudinary — server-signed uploads only |
-| State | Zustand (client), SWR (server data fetching) |
-| Styling | Tailwind CSS |
-| Testing | Vitest (unit + integration), Playwright (E2E) |
+Do not ask clarifying questions on items already decided below. Where this spec is silent, apply the principle that best serves security, correctness, and load-time performance, and note the decision in your summary.
 
 ---
 
-## ABSOLUTE RULES (never violate these)
+# PART A — CORRECTIVE PATCHES (apply first, in order)
 
-1. **No token in localStorage.** Firebase ID tokens are obtained client-side and immediately POSTed to `/api/auth/session`. The session lives in an HttpOnly cookie only. No token is ever written to `localStorage`, `sessionStorage`, or any client-accessible store.
+## PATCH 1 — Session Verification Must Be Real, Never Mocked
 
-2. **Zod before Mongoose.** Every API route handler parses and validates the request body with a Zod schema before any database operation. If Zod throws, return `400` with structured errors immediately.
+**Bug found:** `verifySessionCookie` in `lib/firebase/admin.ts` (or wherever it lives) contained a `NODE_ENV === 'development'` branch that returned a **hardcoded mock session** (`{ uid: 'mock-user-id', role: 'customer' }`) instead of calling Firebase Admin's real verification. This silently broke every role-based check in development — a user could be `admin` in the database and still get treated as `customer` everywhere, with no error, no warning, just wrong behavior.
 
-3. **Admin SDK is server-only.** `src/lib/firebase/admin.ts` must never be imported in any file under `src/app/(auth)`, `src/app/(shop)`, `src/app/(account)`, `src/components/`, `src/hooks/`, or `src/store/`. It is only permitted in `src/app/api/**`, `src/lib/session/**`, `middleware.ts`, and `scripts/`.
+**Rule going forward:** `verifySessionCookie` has exactly one implementation, used in every environment:
 
-4. **Env vars through `src/config/env.ts` only.** Never call `process.env.XYZ` directly in application code. Import the validated `env` object. The one exception is `next.config.js` which uses `process.env` before the app boots.
-
-5. **No secrets client-side.** Only `NEXT_PUBLIC_*` vars are permitted in components, hooks, or client utilities. All provider secrets (Stripe secret key, Daraja consumer secret, Cloudinary API secret, Firebase Admin credentials) are server-only.
-
-6. **Daraja callback must verify before writing.** The M-Pesa callback handler at `/api/payments/mpesa/callback` must: (a) check the request IP against Safaricom's allowlist, (b) match `MerchantRequestID` against the value stored in Redis at STK Push initiation, and (c) check idempotency — if a Payment record with this `MerchantRequestID` already has status `completed`, return `200` immediately without re-processing.
-
-7. **Audit log on every write.** Every `POST`, `PATCH`, `DELETE` API handler must call `writeAuditLog()` after a successful database operation. PII fields (`phone`, `email`, `address`) must be scrubbed before the log entry is written.
-
-8. **Middleware enforces auth — route handlers enforce role.** `middleware.ts` checks cookie presence and redirects unauthenticated users. The actual `verifySessionCookie()` call and role check (`role === 'admin'`) happens inside the route handler, not just in middleware.
-
-9. **Rate limiting on all auth and payment routes.** Every route under `/api/auth/**` and `/api/payments/**` must call the rate limiter from `src/lib/rate-limit/index.ts` as the first operation. Return `429` if the limit is exceeded.
-
-10. **TypeScript strict mode.** `tsconfig.json` must have `"strict": true`. No `any` types. No `@ts-ignore`. Use `unknown` and narrow with Zod or type guards.
-
----
-
-## ENVIRONMENT VARIABLES
-
-All variables below are validated at startup by `src/config/env.ts`. Variables marked **(deferred)** are not required until their corresponding late-stage task — until then, `env.ts` must accept placeholder/empty values for those specific keys without crashing (see Task 1 for how to handle this gracefully).
-
-```
-# Firebase Client (public) — needed from Task 3 onward
-NEXT_PUBLIC_FIREBASE_API_KEY
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-NEXT_PUBLIC_FIREBASE_PROJECT_ID
-NEXT_PUBLIC_FIREBASE_APP_ID
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-
-# Firebase Admin (server-only) — needed from Task 3 onward
-FIREBASE_ADMIN_PROJECT_ID
-FIREBASE_ADMIN_CLIENT_EMAIL
-FIREBASE_ADMIN_PRIVATE_KEY          # multiline — replace \\n with \n on use
-
-# MongoDB — needed from Task 1 onward
-MONGODB_URI                          # Full Atlas connection string with credentials
-
-# Redis (Upstash) — needed from Task 1 onward (rate limiting, idempotency)
-UPSTASH_REDIS_REST_URL
-UPSTASH_REDIS_REST_TOKEN
-
-# Stripe (deferred — Task 12)
-STRIPE_SECRET_KEY                    # sk_test_... or sk_live_...
-STRIPE_WEBHOOK_SECRET                # whsec_...
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY   # pk_test_... or pk_live_...
-
-# Daraja / M-Pesa (deferred — Task 13)
-DARAJA_CONSUMER_KEY
-DARAJA_CONSUMER_SECRET
-DARAJA_SHORTCODE                     # Till or PayBill number
-DARAJA_PASSKEY                       # From Safaricom portal
-DARAJA_CALLBACK_URL                  # Publicly accessible HTTPS URL
-DARAJA_ENV                           # "sandbox" | "production"
-
-# Cloudinary (deferred — Task 11)
-NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
-CLOUDINARY_API_KEY
-CLOUDINARY_API_SECRET
-
-# App — needed from Task 1 onward
-NEXT_PUBLIC_APP_URL                  # e.g. https://yourapp.com
-SESSION_COOKIE_NAME                  # "__session"
-SESSION_COOKIE_MAX_AGE               # 1209600 (14 days in seconds)
-```
-
----
-
-## DATA MODELS
-
-Build these Mongoose models exactly. Every model includes `createdAt` and `updatedAt` via `{ timestamps: true }`.
-
-### User
-```
-uid: string (unique, indexed) — Firebase UID
-email: string (unique, indexed)
-displayName: string
-role: 'customer' | 'admin' (default: 'customer')
-photoURL?: string
-phone?: string
-address?: { line1, line2, city, country, postalCode }
-```
-
-### Product
-```
-name: string
-slug: string (unique, indexed)
-description: string
-price: number (in smallest currency unit — cents/KES)
-currency: 'KES' | 'USD'
-images: string[] (Cloudinary URLs, or placeholder URLs before Task 11)
-category: string (indexed)
-stock: number (default: 0)
-isActive: boolean (default: true)
-```
-
-### Order
-```
-userId: string (indexed — Firebase UID)
-items: [{ productId, name, price, quantity, imageUrl }]
-subtotal: number
-total: number
-currency: 'KES' | 'USD'
-status: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled'
-paymentStatus: 'unpaid' | 'pending' | 'paid' | 'failed' | 'refunded'
-paymentMethod: 'mpesa' | 'stripe'
-shippingAddress: { line1, line2, city, country, postalCode }
-notes?: string
-```
-
-### Payment
-```
-orderId: ObjectId (ref: Order, indexed)
-provider: 'mpesa' | 'stripe'
-status: 'pending' | 'completed' | 'failed'
-amount: number
-currency: string
-# M-Pesa specific
-merchantRequestId?: string (unique sparse index — for idempotency)
-checkoutRequestId?: string
-mpesaReceiptNumber?: string
-phoneNumber?: string
-# Stripe specific
-stripePaymentIntentId?: string (unique sparse index)
-stripeClientSecret?: string
-# Raw provider response
-rawResponse: Record<string, unknown>
-```
-
-### AuditLog
-```
-actor: { uid: string, email: string, role: string }
-action: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT' | 'PAYMENT_INITIATED' | 'PAYMENT_COMPLETED' | 'PAYMENT_FAILED' | 'ROLE_CHANGED'
-resource: string (e.g. 'Product', 'Order', 'User')
-resourceId?: string
-meta: Record<string, unknown> (PII scrubbed)
-ip?: string
-userAgent?: string
-```
-
----
-
-## API CONTRACT
-
-All API responses follow this shape:
-
-**Success:**
-```json
-{ "success": true, "data": <payload> }
-```
-
-**Success + pagination:**
-```json
-{ "success": true, "data": [...], "pagination": { "total": 100, "page": 1, "limit": 20, "pages": 5 } }
-```
-
-**Error:**
-```json
-{ "success": false, "error": { "code": "VALIDATION_ERROR", "message": "...", "details": [...] } }
-```
-
-Standard error codes: `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `RATE_LIMITED`, `PAYMENT_FAILED`, `INTERNAL_ERROR`.
-
----
-
-## TASK SEQUENCE
-
-Complete tasks strictly in order. Each task is a vertical slice — build the foundation pieces it needs (if not already built), then the API route(s), then the UI, then test the whole slice together. Shared infrastructure (env, db client, models, schemas, base UI components) gets built incrementally, **only when first needed** by a task, not all up front.
-
-A "✅ Test checkpoint" at the end of each task describes exactly how to verify it before moving on.
-
----
-
-### TASK 0 — Project Scaffold & Tooling
-
-Set up the Next.js 14 App Router project with TypeScript strict mode, Tailwind CSS, ESLint, Vitest, and Playwright configured (but no tests yet). Create `tsconfig.json` with `"strict": true`. Create `src/app/layout.tsx` (minimal — html/body, global Tailwind import) and `src/app/page.tsx` (placeholder homepage with "Hello World" styled with Tailwind, to prove the build works).
-
-✅ **Test checkpoint:** `npm run dev` starts the server; visiting `/` shows the styled placeholder page. `npx tsc --noEmit` passes.
-
----
-
-### TASK 1 — Config, DB, Redis, Constants
-
-Build:
-- `src/config/constants.ts` — `DEFAULT_PAGE_LIMIT = 20`, `MAX_PAGE_LIMIT = 100`, `SESSION_COOKIE_NAME`, `DARAJA_SANDBOX_BASE_URL`, `DARAJA_PROD_BASE_URL`, `SAFARICOM_CALLBACK_IPS`, `SUPPORTED_CURRENCIES`, `ORDER_STATUSES`, `PAYMENT_STATUSES`.
-- `src/config/env.ts` — Zod-validated env object. For variables in the **(deferred)** groups (Stripe, Daraja, Cloudinary), make them optional in the Zod schema for now; they will be tightened to required once their task is reached (note this explicitly in code comments). `MONGODB_URI`, `UPSTASH_REDIS_REST_URL/TOKEN`, `NEXT_PUBLIC_APP_URL`, `SESSION_COOKIE_NAME`, `SESSION_COOKIE_MAX_AGE` are required now. Export `isDev()` / `isProd()`.
-- `src/lib/mongodb/client.ts` — Mongoose singleton, `connectDB()`, `strictQuery: true`, connection event logging.
-- `src/lib/redis/client.ts` — Upstash Redis client + `setex`, `get<T>`, `del` helpers.
-- `src/lib/utils/cn.ts`, `src/lib/utils/currency.ts`, `src/lib/utils/slugify.ts`.
-- A simple health-check route: `src/app/api/health/route.ts` — GET, calls `connectDB()` and a Redis ping, returns `{ success: true, data: { mongo: 'ok', redis: 'ok' } }` in the standard response shape.
-
-✅ **Test checkpoint:** With real `MONGODB_URI` and Upstash credentials in `.env.local`, run `npm run dev`, then `curl http://localhost:3000/api/health` and confirm both `mongo` and `redis` report `ok`. `npx tsc --noEmit` passes.
-
----
-
-### TASK 2 — Mongoose Models (no auth required yet)
-
-Build `src/schemas/product.schema.ts` (createProductSchema, updateProductSchema, productQuerySchema) and the `Product` Mongoose model (`src/lib/mongodb/models/Product.ts` + barrel `index.ts`), with the pre-save slug hook.
-
-Build a temporary **unauthenticated** test-only route `src/app/api/products/route.ts` — GET (list with pagination/filtering via `productQuerySchema`) and POST (create, validated with `createProductSchema`, no auth check yet — auth is added in Task 5 and will tighten this route). Mark the POST handler clearly with a `// TEMP: auth added in Task 5` comment.
-
-Build `src/app/api/products/[id]/route.ts` — GET by `_id` or `slug`, returns `404` if not found.
-
-✅ **Test checkpoint:**
-- `curl -X POST localhost:3000/api/products -d '{...valid product...}' -H "Content-Type: application/json"` returns `201` with the created product (slug auto-generated).
-- `curl localhost:3000/api/products` returns paginated list.
-- `curl localhost:3000/api/products/<slug>` returns the product; a bad slug returns `404`.
-- Invalid POST body (e.g. negative price) returns `400` with `VALIDATION_ERROR`.
-
----
-
-### TASK 3 — Firebase Auth: Login, Register, Session Cookie
-
-This is the first task requiring real Firebase credentials (client + admin). Build:
-
-- `src/lib/firebase/client.ts`, `src/lib/firebase/admin.ts`, `src/lib/firebase/auth-helpers.ts`.
-- `src/lib/session/get-session.ts`, `src/lib/session/set-session.ts`.
-- `src/schemas/auth.schema.ts` (loginSchema, registerSchema, sessionSchema).
-- `src/app/api/auth/session/route.ts` (POST), `src/app/api/auth/logout/route.ts` (POST), `src/app/api/auth/me/route.ts` (GET). **No rate limiting yet** — that's added in Task 4 once `rate-limit` exists; mark with `// TEMP: rate limit added in Task 4`.
-- `src/lib/mongodb/models/User.ts` + update barrel — on first session creation, upsert a `User` document with `role: 'customer'`.
-- `src/components/ui/Button.tsx`, `Input.tsx`, `Spinner.tsx`, barrel `index.ts` (minimal versions — enough for forms; expand later if needed).
-- `src/components/auth/LoginForm.tsx`, `RegisterForm.tsx`, `GoogleSignInButton.tsx`.
-- Pages: `src/app/(auth)/login/page.tsx`, `src/app/(auth)/register/page.tsx`.
-- `src/hooks/useAuth.ts`.
-
-✅ **Test checkpoint:**
-- In the browser, register a new account at `/register` → redirected to `/dashboard` (placeholder page is fine, return 200 text "Dashboard" for now) or wherever specified; confirm an HttpOnly `__session` cookie is set (check dev tools — no token in localStorage/sessionStorage).
-- `curl -b cookies.txt localhost:3000/api/auth/me` returns the user's `uid`, `email`, `role: 'customer'`.
-- Log out via UI → cookie cleared, `/api/auth/me` returns `401`.
-- Confirm a `User` document was created in MongoDB with the correct `uid`/`email`.
-
----
-
-### TASK 4 — Rate Limiting + Wire Into Auth Routes
-
-Build `src/lib/rate-limit/index.ts` (`authLimiter`, `paymentLimiter`, `apiLimiter`, `checkRateLimit`). Retrofit `src/app/api/auth/session/route.ts` and `src/app/api/auth/logout/route.ts` to call `authLimiter` first, returning `429` when exceeded. Remove the `// TEMP` comments from Task 3.
-
-✅ **Test checkpoint:** Script a loop of 11 rapid POSTs to `/api/auth/session` with a bad token from the same IP — the 11th request returns `429` with `RATE_LIMITED`. Requests 1–10 return `400`/`401` as expected (bad token, not rate-limited).
-
----
-
-### TASK 5 — Audit Log + Admin Role + Protect Product Mutations
-
-Build `src/lib/mongodb/models/AuditLog.ts`, `src/lib/audit/logger.ts` (`writeAuditLog`, PII scrubbing). Build `src/schemas/user.schema.ts` (`setRoleSchema`). Build `scripts/set-admin-claim.ts`.
-
-Retrofit `src/app/api/products/route.ts` POST and `src/app/api/products/[id]/route.ts` PATCH/DELETE: require session via `getSession()`/`requireSession()`, check `role === 'admin'` inside the handler (return `403 FORBIDDEN` otherwise), call `writeAuditLog()` after success. DELETE is a soft delete (`isActive: false`).
-
-Build `src/app/api/admin/users/[uid]/role/route.ts` (PATCH, admin-only, calls `adminAuth.setCustomUserClaims` + updates Mongo `User.role`, writes `ROLE_CHANGED` audit log). Build `src/app/api/admin/audit/route.ts` (GET, admin-only, paginated).
-
-✅ **Test checkpoint:**
-- Run `tsx scripts/set-admin-claim.ts <your-uid>` to promote your test account to admin; log out and back in.
-- As a non-admin, POST to `/api/products` → `403`.
-- As admin, POST to `/api/products` → `201`, and `curl -b admin_cookies.txt localhost:3000/api/admin/audit` shows a `CREATE` entry for `Product` with no raw email/phone in `meta`.
-- PATCH a product's role via `/api/admin/users/<uid>/role` as admin → `200`, Mongo `User.role` updated, audit log shows `ROLE_CHANGED`.
-
----
-
-### TASK 6 — Cart (Frontend-Only, Fully Working)
-
-Build `src/store/cart.store.ts` (Zustand, sessionStorage-persisted), `src/store/ui.store.ts`, `src/hooks/useCart.ts`. Build `src/components/ui/Modal.tsx`, `Toast.tsx`, `Badge.tsx` and add to barrel. Build `src/components/shop/CartItem.tsx`, `CartDrawer.tsx`, `ProductCard.tsx`, `ProductGrid.tsx`. Build `src/components/layout/Navbar.tsx` (with cart icon + item count), `Footer.tsx`, `PageWrapper.tsx`. Build `src/app/(shop)/layout.tsx` (Navbar + Footer + CartDrawer). Build `src/app/(shop)/products/page.tsx` (server component, fetches from `/api/products`) and `src/app/(shop)/products/[slug]/page.tsx` (product detail with "Add to Cart"). Build `src/app/(shop)/cart/page.tsx`.
-
-✅ **Test checkpoint:** In the browser — browse `/products` (seeded products from Task 2 testing), click into a product, add to cart, see the cart drawer/badge update, navigate to `/cart`, adjust quantities, remove an item, confirm totals recalculate correctly. Refresh the page — cart persists (sessionStorage) until the tab is closed.
-
----
-
-### TASK 7 — Orders: Create Order (Backend + Checkout UI, No Payment Yet)
-
-Build `src/schemas/order.schema.ts` (`createOrderSchema`, `updateOrderStatusSchema`). Build `src/lib/mongodb/models/Order.ts` (+ pre-save subtotal/total hook) and update barrel. Build `src/app/api/orders/route.ts` (POST — require session, validate, check stock/`isActive` per item, decrement stock, create Order with `status: 'pending'`, `paymentStatus: 'unpaid'`, write audit log, return `201`). Build `src/app/api/orders/[orderId]/route.ts` (GET — owner or admin only).
-
-Build `src/components/shop/CheckoutSummary.tsx`. Build `src/app/(shop)/checkout/page.tsx` — requires auth (redirect to `/login?redirect=/checkout` if not logged in), shows `CheckoutSummary`, a shipping address form, and a **temporary** "Place Order" button that POSTs to `/api/orders` and on success navigates to `/checkout/success?orderId=...` (payment method selection and `PaymentMethodSelector` UI come in Task 8; for now, hardcode `paymentMethod: 'mpesa'` in the request body with a `// TEMP` comment). Build `src/app/(shop)/checkout/success/page.tsx` — fetches the order via `/api/orders/[orderId]` and displays a receipt; clears the cart on mount.
-
-✅ **Test checkpoint:**
-- As a logged-in user with items in cart, go to `/checkout`, fill shipping address, click "Place Order" → redirected to `/checkout/success?orderId=...` showing correct items/subtotal/total.
-- Confirm in MongoDB: `Order` document created with `status: 'pending'`, `paymentStatus: 'unpaid'`; corresponding `Product.stock` values decremented.
-- `curl -b cookies.txt localhost:3000/api/orders/<orderId>` as the owner returns the order; as a different non-admin user returns `403`/`401`.
-- Attempting to order more than available stock returns `400`.
-
----
-
-### TASK 8 — Account Pages: Dashboard, Order History, Profile
-
-Build `src/app/(account)/layout.tsx` (wrap with `AuthGuard`). Build `src/components/auth/AuthGuard.tsx`. Build `src/app/api/orders/route.ts` GET (list current user's orders, paginated) — extend the existing file. Build `src/app/(account)/dashboard/page.tsx` (welcome + last 3 orders + quick links), `src/app/(account)/orders/page.tsx` (paginated order history with status badges), `src/app/(account)/orders/[orderId]/page.tsx` (full detail). Build `src/components/admin/OrderStatusBadge.tsx` (reused later for admin too) and `src/components/ui/Badge.tsx` status-variant mapping.
-
-Build `src/schemas/user.schema.ts` `updateProfileSchema` (if not already from Task 5 — extend it) and `src/app/api/users/me/route.ts` (PATCH — update `displayName`/`phone`/`address` on the current user's `User` doc, audit log). Build `src/app/(account)/profile/page.tsx` (edit profile form; password change via Firebase `updatePassword` client-side).
-
-✅ **Test checkpoint:** Log in, visit `/dashboard` (shows recent orders), `/orders` (paginated list with status badges), click into an order for full detail. Edit profile on `/profile`, save, refresh, confirm changes persisted in MongoDB. Visiting any `(account)` route while logged out redirects to `/login`.
-
----
-
-### TASK 9 — Order Status Polling Infrastructure (No Real Payment Yet)
-
-Build `src/lib/utils/idempotency.ts`. Build `src/app/api/orders/[orderId]/status/route.ts` (GET — returns `{ orderStatus, paymentStatus, paymentMethod, mpesaReceiptNumber? }`). Build `src/hooks/useOrderStatus.ts` (SWR polling every 3s while `paymentStatus === 'pending'`, stops on `paid`/`failed`/after 5 min). Build `src/components/payment/MpesaStatusPoller.tsx` using `useOrderStatus` — for now, since there's no real payment trigger, add a **dev-only** admin action to manually flip an order's `paymentStatus` for testing: `src/app/api/admin/orders/[orderId]/dev-set-payment-status/route.ts` (admin-only, behind `isDev()` check, returns `403` in production) that sets `paymentStatus` directly so polling can be exercised end-to-end.
-
-✅ **Test checkpoint:** Create an order (Task 7), note its `paymentStatus: 'unpaid'`. Manually set it to `'pending'` via Mongo or the dev route, load a page rendering `MpesaStatusPoller` for that order, confirm it polls every 3s. Use the dev-set route to flip to `'paid'` and confirm the poller stops and shows the success state within ~3s. Confirm the dev route returns `403` if `NODE_ENV=production`.
-
----
-
-### TASK 10 — Admin Dashboard: Products & Orders Management
-
-Build `src/components/admin/Sidebar.tsx`, `StatsCard.tsx`, `DataTable.tsx`, `ProductForm.tsx` (image upload field can be a plain URL text input for now — Cloudinary comes in Task 11; mark with `// TEMP`). Build `src/app/admin/layout.tsx` (server-side admin check via `getSession()`, redirect non-admins to `/`). Build `src/app/admin/page.tsx` (stats: total orders today, revenue today, pending orders, total products — add a small aggregation endpoint `src/app/api/admin/stats/route.ts`, admin-only). Build `src/app/admin/products/page.tsx`, `src/app/admin/products/new/page.tsx`, `src/app/admin/products/[id]/page.tsx`. Build `src/app/admin/orders/page.tsx` (DataTable with status/payment filters), `src/app/admin/orders/[orderId]/page.tsx` (detail + manual status update via `updateOrderStatusSchema` against a new `src/app/api/orders/[orderId]/status-update/route.ts` PATCH, admin-only, audit logged). Build `src/app/admin/users/page.tsx` (DataTable, inline role change via Task 5's role endpoint). Build `src/app/admin/audit-log/page.tsx`.
-
-Update `middleware.ts` (first real implementation) to cover `/admin/:path*`, `/dashboard/:path*`, `/orders/:path*`, `/profile/:path*`, `/api/admin/:path*` — cookie-presence check + redirect/`401`, plus inline `verifySessionCookie()` + role check for `/admin/**` page routes.
-
-✅ **Test checkpoint:** As admin, visit `/admin` (stats populate from real data), create/edit/deactivate a product via `/admin/products`, view and manually update an order's status via `/admin/orders/[orderId]`, change a user's role via `/admin/users`, and view paginated entries on `/admin/audit-log`. As a non-admin, visiting `/admin` redirects to `/`. Hitting `/api/admin/stats` without a session returns `401`.
-
----
-
-### TASK 11 — Cloudinary Image Uploads (First Deferred Integration)
-
-Now wire in real Cloudinary credentials. Build `src/lib/cloudinary/server.ts` (`signUploadParams`, `deleteImage`), `src/lib/cloudinary/client.ts` (`getCloudinaryUrl`). Build `src/app/api/upload/sign/route.ts` (POST, auth required, 60s expiry signed params). Build `src/hooks/useUpload.ts`. Retrofit `ProductForm` to use real Cloudinary upload via `useUpload` (remove the `// TEMP` URL field from Task 10). Tighten `env.ts` to require Cloudinary vars now.
-
-✅ **Test checkpoint:** In `/admin/products/new`, upload a real image — confirm it lands in the configured Cloudinary folder, the returned URL is saved on the `Product.images` array, and `getCloudinaryUrl` renders an optimized version on `ProductCard`/product detail pages.
-
----
-
-### TASK 12 — Stripe Card Payments (Second Deferred Integration)
-
-Now wire in real Stripe test-mode credentials. Build `src/lib/stripe/client.ts`, `src/lib/stripe/webhook.ts` (`constructStripeEvent`, `handleStripeEvent` for `payment_intent.succeeded` / `payment_intent.payment_failed`). Build `src/schemas/payment.schema.ts` `stripeIntentSchema`. Build `src/app/api/payments/stripe/intent/route.ts` (POST, rate-limited, auth required) and `src/app/api/payments/stripe/webhook/route.ts` (POST, raw body via `req.text()`). Build `src/components/payment/PaymentMethodSelector.tsx` and `StripeForm.tsx` (Elements + PaymentElement + `stripe.confirmPayment()`). Retrofit `/checkout` to show `PaymentMethodSelector` and conditionally render `StripeForm` (remove the Task 7 `// TEMP` hardcoded `paymentMethod`). Tighten `env.ts` to require Stripe vars now.
-
-✅ **Test checkpoint:** Run `stripe listen --forward-to localhost:3000/api/payments/stripe/webhook` (Stripe CLI). Complete a checkout selecting "Card", pay with test card `4242 4242 4242 4242` → order's `paymentStatus` flips to `paid` and `status` to `confirmed` via the webhook, visible on `/checkout/success` and in `/orders`. Test a declined test card → `paymentStatus: 'failed'`, audit log shows `PAYMENT_FAILED`.
-
----
-
-### TASK 13 — M-Pesa Daraja STK Push (Final Deferred Integration)
-
-Now wire in real Daraja sandbox credentials. Build `src/config/safaricom.ts`. Build `src/lib/daraja/types.ts`, `client.ts` (token caching via Redis), `stk-push.ts`, `stk-query.ts`, `callback-verifier.ts`. Build `src/schemas/payment.schema.ts` additions (`mpesaInitiateSchema`, `mpesaCallbackSchema`). Build `src/app/api/payments/mpesa/initiate/route.ts`, `src/app/api/payments/mpesa/callback/route.ts` (full verification per Absolute Rule 6), `src/app/api/payments/mpesa/query/route.ts`. Build `src/components/payment/MpesaForm.tsx`, retrofit `MpesaStatusPoller` (from Task 9) to add the "Retry via query" fallback. Retrofit `PaymentMethodSelector`/`/checkout` to offer M-Pesa as a real option (remove Task 9's dev-only bypass route, or restrict it further behind `isDev()` — confirm it's still `403` in production). Build `scripts/test-daraja-sandbox.ts`. Tighten `env.ts` to require Daraja vars now.
-
-✅ **Test checkpoint:** Run `tsx scripts/test-daraja-sandbox.ts <sandbox-phone> <amount>` against the Daraja sandbox and confirm a successful `STKPushResponse`. Complete a checkout selecting "M-Pesa", enter the sandbox test phone number, approve the prompt on the test device/simulator → callback updates `Payment` to `completed` and `Order.paymentStatus` to `paid`, poller shows success. Send a duplicate callback payload manually (same `MerchantRequestID`) → handler returns `200` without reprocessing (verify via audit log — only one `PAYMENT_COMPLETED` entry). Send a callback from a non-Safaricom IP → `403`.
-
----
-
-### TASK 14 — Test Suite Completion
-
-Fill in remaining unit/integration/E2E tests not already produced as side effects of earlier tasks:
-
-- `tests/unit/schemas/product.schema.test.ts`, `tests/unit/schemas/payment.schema.test.ts`
-- `tests/unit/lib/daraja/callback-verifier.test.ts`, `tests/unit/lib/stripe/webhook.test.ts`
-- `tests/integration/api/auth/session.test.ts`, `tests/integration/api/payments/mpesa.test.ts`, `tests/integration/api/payments/stripe.test.ts`
-- `tests/e2e/checkout-mpesa.spec.ts`, `tests/e2e/checkout-stripe.spec.ts`, `tests/e2e/admin-product-crud.spec.ts`
-
-✅ **Test checkpoint:** `npm run test` (unit + integration) and `npm run test:e2e` (Playwright) both pass in CI mode.
-
----
-
-### TASK 15 — Hardening & Final Checklist
-
-Build `next.config.js` (full security headers: CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy; Cloudinary image domain; strict mode). Build `scripts/seed-db.ts` (10 sample products, 1 admin user). Final pass over the **Delivery Checklist** below across the entire codebase.
-
-✅ **Test checkpoint:** Run through the Delivery Checklist in full; fix any violations found.
-
----
-
-## CODE QUALITY STANDARDS
-
-**Every file must:**
-- Have explicit return types on all exported functions
-- Import types separately (`import type { X } from '...'`) where possible
-- Handle all error cases explicitly — no silent failures
-- Use `async/await` — no raw Promise chains
-- Include JSDoc comments on all exported functions explaining parameters, return values, and any side effects
-
-**API route handlers must:**
-- Always return a `NextResponse` — never `return` bare objects
-- Set correct HTTP status codes (`200`, `201`, `400`, `401`, `403`, `404`, `429`, `500`)
-- Never expose stack traces or internal error messages in responses — log them server-side, return generic messages to client
-
-**React components must:**
-- Be functional components with typed props interfaces
-- Have `loading` and `error` states handled
-- Be accessible — correct ARIA roles, keyboard navigation, focus management in modals
-- Mobile-first responsive layout
-
----
-
-## SAFARICOM DARAJA SPECIFICS
-
-The Daraja sandbox base URL is `https://sandbox.safaricom.co.ke`. Production is `https://api.safaricom.co.ke`.
-
-The STK Push password is: `base64(shortcode + passkey + timestamp)` where timestamp format is `YYYYMMDDHHmmss`.
-
-The callback payload from Safaricom looks like:
-```json
-{
-  "Body": {
-    "stkCallback": {
-      "MerchantRequestID": "...",
-      "CheckoutRequestID": "...",
-      "ResultCode": 0,
-      "ResultDesc": "The service request is processed successfully.",
-      "CallbackMetadata": {
-        "Item": [
-          { "Name": "Amount", "Value": 100 },
-          { "Name": "MpesaReceiptNumber", "Value": "ABC123" },
-          { "Name": "TransactionDate", "Value": 20241201120000 },
-          { "Name": "PhoneNumber", "Value": 254712345678 }
-        ]
-      }
-    }
+```typescript
+export async function verifySessionCookie(sessionCookie: string) {
+  try {
+    const decodedToken = await adminAuth.verifySessionCookie(sessionCookie, /* checkRevoked */ true)
+    return decodedToken
+  } catch (error) {
+    console.error('Error verifying session cookie:', error)
+    return null
   }
 }
 ```
 
-`ResultCode === 0` means success. Any other code is a failure. Always parse `CallbackMetadata.Item` as an array and find items by `Name` — the order is not guaranteed.
+- **No environment-conditional mock branches in any auth-path function, ever.** If a mock or stub is genuinely needed for local dev without real Firebase credentials, it must live in a clearly separate, clearly named file (e.g. `__mocks__/firebase-admin.ts`) that is wired in only via test config or a dependency-injection seam — never an inline `if (isDev())` inside the real implementation.
+- Pass `true` as the second argument to `verifySessionCookie` to enable revocation checking, so `adminAuth.revokeRefreshTokens(uid)` (used after role changes — see Patch 3) actually takes effect immediately rather than waiting out natural token expiry.
+- **Audit this immediately:** grep the whole codebase for `NODE_ENV === 'development'`, `isDev()`, and `mock` inside anything under `src/lib/session/**`, `src/lib/firebase/**`, and `middleware.ts`/`proxy.ts`. Any conditional mock logic found in these paths must be removed.
+
+✅ **Test checkpoint:** Log in as a known `customer`-role account and a known `admin`-role account (use the same one promoted via `scripts/set-admin-claim.ts`). Hit `/api/auth/me` for each — confirm the returned `role` matches the database exactly, with `NODE_ENV=development` set. Confirm an expired or tampered cookie returns `null`/`401`, not a fake valid session.
 
 ---
 
-## DELIVERY CHECKLIST
+## PATCH 2 — One `getSession`/`requireSession` Per Execution Context, Correctly Named
 
-Before marking the project complete, verify:
+**Bug found:** the codebase grew **two different `getSession` implementations** with the same name in different files — one accepting an optional `NextRequest` (for API route handlers), one reading from `next/headers` `cookies()` (for Server Components/layouts) — and a Server Component (`AdminLayout`) imported the *request-based* one with no request to pass it, so `req?.cookies?.get(...)` always evaluated to `undefined` and the session always read as `null`. This produced a confusing failure mode: middleware approved the request, but the layout's own check failed immediately after, throwing an uncaught `Unauthorized` error that crashed the page with a 500 instead of redirecting.
 
-- [ ] All files compile without TypeScript errors (`npx tsc --noEmit`)
-- [ ] No `process.env` calls outside `env.ts` and `next.config.js`
-- [ ] No Firebase Admin imports in client-side files
-- [ ] All API routes return the standard response shape
-- [ ] All mutating routes write an audit log
-- [ ] Rate limiting is applied to auth and payment routes
-- [ ] Zod validation runs before any DB operation
-- [ ] All Mongoose models use `{ timestamps: true }`
-- [ ] No hardcoded credentials, URLs, or magic strings (use `constants.ts`)
-- [ ] No remaining `// TEMP` comments — all temporary scaffolding from earlier tasks has been removed or upgraded
-- [ ] Tests pass: unit, integration, and E2E
+**Rule going forward — two clearly separated, clearly named modules:**
+
+`src/lib/session/get-session.ts` — **API route handlers only.** Takes a `NextRequest`. Used inside `route.ts` files under `src/app/api/**`.
+
+```typescript
+export async function getSession(req: NextRequest) { /* reads req.cookies */ }
+export async function requireSession(req: NextRequest) { /* throws if null */ }
+```
+
+`src/lib/session/verify-session.ts` — **Server Components, layouts, Server Actions.** Takes no arguments; reads via `cookies()` from `next/headers`.
+
+```typescript
+export async function getSession() { /* reads cookies() from next/headers */ }
+export async function requireSession() { /* throws if null */ }
+```
+
+- **Never** import the request-based `get-session.ts` from a file under `src/app/**/layout.tsx`, `src/app/**/page.tsx`, or any Server Component. ESLint rule: add a `no-restricted-imports` entry forbidding `@/lib/session/get-session` from any path matching `**/layout.tsx` or `**/page.tsx` (route handlers under `src/app/api/**/route.ts` are exempt).
+- Server Component callers should generally prefer the **non-throwing** `getSession()` + explicit `redirect()` over `requireSession()` + uncaught throw, so an expired/missing session sends the user to `/login` cleanly instead of crashing into a 500 page:
+
+```typescript
+const session = await getSession()
+if (!session) {
+  redirect('/login')
+}
+```
+
+✅ **Test checkpoint:** Visit `/admin` while logged out — must redirect cleanly to `/login`, zero uncaught errors in server logs. Visit `/admin` while logged in as a non-admin — must redirect cleanly to `/`. Visit `/admin` while logged in as admin — must render.
+
+---
+
+## PATCH 3 — Stale Session After Role Change Is Expected; Document and Handle It
+
+**Bug found:** running `scripts/set-admin-claim.ts` updates Firebase custom claims and the Mongo `User.role` field, but any **already-issued session cookie** still reflects the old role until it's refreshed. This isn't a bug in the script — it's how session cookies work — but it confused debugging because logout/login audit logs kept showing the pre-promotion role, making it look like the promotion script had silently failed.
+
+**Rule going forward:**
+- `scripts/set-admin-claim.ts` must call `adminAuth.revokeRefreshTokens(uid)` after setting the custom claim, so existing sessions are invalidated rather than left stale for up to `SESSION_COOKIE_MAX_AGE`.
+- Print an explicit message after the script runs: `Session for this UID has been revoked — user must log in again for the new role to take effect.`
+- The audit log written at session-create/destroy time must read the role **fresh from the decoded session token** (or re-query Mongo), never from a separately cached value, so this kind of staleness is visible in logs the moment it happens rather than silently persisting.
+
+✅ **Test checkpoint:** Promote a user via the script, confirm the script's own log line about revocation appears. Without explicitly logging out, attempt an admin action with the now-stale cookie still in the browser — it should be rejected (revocation took effect), forcing a fresh login, after which the new role is correctly reflected everywhere.
+
+---
+
+## PATCH 4 — Rate Limiters Must Match the Sensitivity of the Route, Not Just the Route's Folder
+
+**Bug found:** `/api/auth/logout` shared `authLimiter` (10 requests / 15 minutes) with login/registration/password-reset. Logout has no brute-force/credential-guessing surface — rate-limiting it that tightly only self-DoSes legitimate users during normal testing or normal use (e.g. multiple tabs logging out near-simultaneously).
+
+**Rule going forward — limiter assignment by *actual* sensitivity, not by folder convention:**
+
+| Route | Limiter | Reasoning |
+|---|---|---|
+| `/api/auth/session` (login/register) | `authLimiter` (10 / 15 min) | Credential-guessing surface |
+| `/api/auth/logout` | `apiLimiter` (100 / min) | No credential surface; logout should never be the thing blocking a user |
+| `/api/payments/**` | `paymentLimiter` (5 / min) | Cost-bearing, abuse-sensitive |
+| Everything else under `/api/**` | `apiLimiter` (100 / min) | General abuse/DoS protection only |
+
+- Add a one-line comment above every `checkRateLimit(...)` call explaining *why* that specific limiter was chosen for that route, so future edits don't regress this by copy-pasting the wrong limiter from a neighboring file.
+- The `identifier` passed to `checkRateLimit` falls back to `'anonymous'` when `x-forwarded-for`/`x-real-ip` are both absent (this is the normal case on bare `localhost` in dev, since those headers are normally set by a reverse proxy). Document this explicitly in `rate-limit/index.ts`: in local dev, **all unauthenticated requests share one global bucket** unless a real proxy header is present. This is fine for production (real hosts set these headers) but means local rate-limit testing will trip far faster than a teammate might expect — call this out so nobody burns an hour confused by it again.
+
+✅ **Test checkpoint:** Hit `/api/auth/logout` 20 times in under a minute — no `429`. Hit `/api/auth/session` with bad credentials 11 times in under 15 minutes — the 11th returns `429`.
+
+---
+
+## PATCH 5 — Runtime Mismatch: Firebase Admin SDK Cannot Run on the Edge Runtime
+
+**Bug found:** `middleware.ts` imported `verifySessionCookie`, which (correctly, per Patch 1) now calls into the Firebase Admin SDK — but middleware defaults to the Edge runtime, which has no `node:crypto`, `node:fs`, etc. Result: `Cannot find module 'node:crypto'` crash on every request once real verification was wired in.
+
+**Rule going forward:**
+- Any file that transitively imports Firebase Admin (`adminAuth`) and is reachable from `middleware.ts`/`proxy.ts` **must** declare:
+  ```typescript
+  export const runtime = 'nodejs'
+  ```
+  at the top of the middleware/proxy file itself. Confirm this is supported and behaving as expected on the exact Next.js version in `package.json` before relying on it — if a future Next major reintroduces Edge-only middleware, the fallback is to make middleware do a **cheap, unverified** check (cookie presence only, or unverified JWT payload decode for UX-routing purposes only) and push the *real* cryptographic verification down into the Node-runtime route handler or Server Component, treating middleware as advisory routing only, never as the actual security boundary in that fallback scenario.
+- Next.js's `middleware.ts` file convention is deprecated in favor of `proxy.ts` as of the version in use here (confirm current naming requirement against the installed `next` version in `package.json` before renaming, since this convention may continue to evolve). Rename and re-verify after PATCH 5's runtime fix is confirmed working, as a separate, isolated step — don't combine the rename with other changes in the same test cycle, so any regression is attributable to one or the other.
+
+✅ **Test checkpoint:** Restart the dev server, visit any protected route. No `node:crypto` error in server or browser console. Confirm `proxy.ts` (post-rename) still triggers correctly on protected paths.
+
+---
+
+## PATCH 6 — No Relative-URL `fetch()` From Server-Rendered Code, Ever
+
+**Bug found:** `app/admin/page.tsx` (a Server Component) called `fetch('/api/admin/stats', { credentials: 'include' })`. Two compounding problems: (a) relative URLs have no implicit origin to resolve against on the server, causing a hard crash (`Failed to parse URL`); and (b) even with an absolute URL, `credentials: 'include'` is a browser-only fetch option — a server-side `fetch` call is a brand-new outbound request with no cookies attached unless manually forwarded, so the "fixed" version would have rendered a silently blank dashboard (401 → early `return null`) rather than crashing, which is a worse failure mode because it doesn't announce itself.
+
+**Rule going forward — Server Components never `fetch()` their own app's API routes for data they could read directly:**
+
+- If a Server Component needs data that's also exposed via an API route (because some other client also needs it over HTTP), **extract the core logic into a plain server-only function** (e.g. `src/lib/admin/get-admin-stats.ts` exporting `getAdminStats()`), and have *both* the route handler and the Server Component call that shared function directly. No HTTP round-trip to itself, ever.
+- The extracted function does **not** perform its own auth check — that stays the caller's responsibility (the route handler does its own `requireSession` + role check; the Server Component relies on its parent layout already having gated the entire route tree, per Patch 2).
+- If a genuine cross-origin or client-side fetch to an internal API is unavoidable, the URL must be built from `env.NEXT_PUBLIC_APP_URL`, never a bare relative path, and cookies must be explicitly forwarded (e.g. reading `cookies()` server-side and attaching a `Cookie` header manually) — but prefer the shared-function approach above whenever the caller and the route handler live in the same codebase, which is the common case here.
+- Add this as a lint-adjacent code review rule: any `fetch(` call whose first argument is a string literal starting with `/api/` inside a file under `src/app/**` that is *not* itself a `route.ts` is a defect, full stop.
+
+✅ **Test checkpoint:** `/admin` dashboard loads with real, non-zero (or correctly zero) stats on first paint, no client-side loading flash, no fetch-related errors in server logs.
+
+---
+
+## PATCH 7 — No `setState`/Router Navigation Calls During Render
+
+**Bug found:** `CheckoutPage` called `router.push(...)` directly in the component body (not inside an effect) to redirect unauthenticated users, triggering React's "Cannot update a component while rendering a different component" warning — calling router navigation during render violates React's render-purity contract.
+
+**Rule going forward:** any redirect, analytics call, or other side effect triggered by a *client-side* auth/state check must live inside `useEffect`, never directly in the render body. Pattern to use everywhere this shape occurs:
+
+```typescript
+'use client'
+export default function SomeGatedPage() {
+  const router = useRouter()
+  const { isAuthenticated, isLoading } = useAuth()
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.push(`/login?redirect=${encodeURIComponent(currentPath)}`)
+    }
+  }, [isLoading, isAuthenticated, router])
+
+  if (isLoading) return <Spinner />
+  if (!isAuthenticated) return null
+  // ...render the real page
+}
+```
+
+Note the explicit `isLoading` guard — auth state is very often resolved asynchronously on mount; redirecting before that resolves causes a flash-redirect for users who are, in fact, logged in. Audit every Client Component doing an auth-gated redirect (`checkout`, `(account)/**`, anywhere else `useAuth` is consulted for a redirect decision) for this same pattern — this bug class is easy to reintroduce by copy-paste.
+
+✅ **Test checkpoint:** No React console warnings about setState-during-render anywhere in the auth-gated checkout/account flows. Logged-out visit to `/checkout` redirects to `/login?redirect=%2Fcheckout` with no flash of checkout content first. Logged-in visit renders checkout directly, no flash of redirect.
+
+---
+
+## PATCH 8 — Performance Pass (apply across the whole app, not just one file)
+
+No single catastrophic bottleneck was identified, so harden broadly rather than chasing one fix. Apply all of the following:
+
+**8a. Mongoose connection reuse.** Confirm `connectDB()` is a true singleton — cache the connection promise on `globalThis` (standard Next.js dev-mode hot-reload pattern) so repeated calls across requests/route handlers reuse the existing connection rather than reconnecting. The `🔌 Using existing MongoDB connection` log line seen in dev output suggests this is *already* working — confirm it, don't assume it; add a one-time `console.warn` if a *new* connection is ever opened after startup, so regressions are loud.
+
+**8b. Stop redundant `/api/auth/me` calls.** Dev logs showed `/api/auth/me` being hit repeatedly across page navigations in rapid succession. Cache the auth state client-side (SWR with a reasonable `dedupingInterval`, or React context populated once at app shell mount) rather than having every page/component independently re-fetch identity on mount. Target: one `/api/auth/me` call per session-cookie lifetime per page load, not one per component.
+
+**8c. Avoid N+1 Mongo lookups on every gated request.** Both `AdminLayout` and `/api/admin/stats` (and likely other admin routes) each independently do `verifySessionCookie` → `User.findOne({ uid })` to re-derive the role. Since `AdminLayout` already gates the entire `/admin/**` tree, child Server Components/route handlers under it should not need to repeat the full session-verify-plus-Mongo-lookup if there's a cheaper way to pass already-verified identity down (e.g. via a `React.cache()`-wrapped session getter so multiple calls within the same render pass dedupe automatically, rather than re-hitting Mongo each time). Apply `React.cache()` (or equivalent request-memoization) to `getSession()`/role-lookup helpers used in Server Components.
+
+**8d. Parallelize independent data fetches.** Where a page needs multiple independent pieces of data (e.g. dashboard stats + recent orders), fetch them with `Promise.all` rather than sequential `await`s, mirroring the pattern already used inside `getAdminStats()`'s internal `Promise.all` — apply that same discipline at the page level, not just within individual aggregation functions.
+
+**8e. Add Mongoose indexes matching actual query patterns.** Audit every `findOne`/`find`/aggregation `$match` against fields that aren't already indexed per the original data model spec (`uid`, `email`, `slug` were specified as indexed — confirm this is actually present in the live schema files, not just the spec document). Add indexes for any additional frequently-filtered fields introduced since (e.g. `Order.status`, `Order.createdAt` given the stats aggregation filters on both).
+
+**8f. Fix the Mongoose deprecation warning while in the area.** `findOneAndUpdate(..., { new: true })` is deprecated in favor of `{ returnDocument: 'after' }`. Sweep the codebase for every occurrence and update — low-risk, removes console noise that obscures real warnings.
+
+**8g. Confirm Next.js image optimization isn't silently falling back to slow paths.** The dev logs showed a 404 on `/_next/image?url=https%3A%2F%2Fexample.com%2Fimage.jpg...` — a placeholder/example image URL slipping into production-style image rendering will always 404 and may cause layout-shift/perceived slowness on pages using it. Audit for hardcoded `example.com` or other placeholder image URLs left over from scaffolding and replace with either real Cloudinary URLs (post-Task 11) or a local placeholder asset that's guaranteed to resolve.
+
+✅ **Test checkpoint:** With browser dev tools' Network tab open, click through login → dashboard → admin → products → checkout. Confirm: no duplicate back-to-back `/api/auth/me` calls per navigation, no new-Mongo-connection log lines after startup, no 404s on image requests, Server Component pages with multiple data needs show parallel (not waterfall) request timing in the Next.js dev overlay.
+
+---
+
+# PART B — ADMIN ACCESS, FULLY SPECIFIED
+
+This section consolidates and elaborates the admin-access requirements scattered across the original Tasks 3, 5, and 10 into one authoritative reference, since this was a recurring point of confusion.
+
+## Admin access model (decision, locked)
+
+- **No separate admin login page or admin-specific auth flow.** There is exactly one login flow (`/login`) for every user, customer or admin. This is intentional — Firebase Auth sessions are role-agnostic at the authentication layer; role is an authorization concern checked *after* authentication, not a separate login surface.
+- **No visible "Admin" link in the regular navbar, by design.** The admin area is reached by navigating directly to `/admin` in the URL. This is a deliberate simplicity choice for this project's scale, not an oversight — do not add a nav link unless explicitly requested in a future task.
+- **The entire `/admin/**` route tree is gated by exactly one place: `src/app/admin/layout.tsx`.** Every page under `/admin` inherits this gate automatically via Next.js layout nesting. No individual `/admin/**` page should re-implement its own redirect-on-unauthorized logic — that's `AdminLayout`'s job, once, at the top.
+
+## The full, correct gate logic for `AdminLayout`
+
+```typescript
+import { getSession } from '@/lib/session/verify-session' // cookies()-based — see Patch 2
+import { User } from '@/models'
+import { connectDB } from '@/lib/mongodb/client'
+import { redirect } from 'next/navigation'
+import Sidebar from '@/components/admin/Sidebar'
+
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const session = await getSession()
+  if (!session) {
+    redirect('/login?redirect=/admin')
+  }
+
+  await connectDB()
+  const user = await User.findOne({ uid: session.uid })
+  if (!user || user.role !== 'admin') {
+    redirect('/')
+  }
+
+  return (
+    <>
+      <Sidebar />
+      <div className="flex-1 p-6">{children}</div>
+    </>
+  )
+}
+```
+
+Key details, each tied to a patch above: imports the cookies()-based `getSession`, not the request-based one (Patch 2); redirects cleanly instead of throwing (Patch 2); the redirect target preserves intent (`?redirect=/admin`) so a future "return to where I was going" flow has something to work with, even though it isn't wired up yet.
+
+## API routes under `/api/admin/**`
+
+Every route handler under `/api/admin/**` performs **its own independent** session + role check — never rely on the page-level layout gate to also protect the API layer, since API routes can be hit directly (curl, another client, a forged request) without ever rendering the layout. This was already correct in the original spec (Absolute Rule 8: "middleware enforces auth, route handlers enforce role") — Part A's patches don't change this rule, they just fix the *implementation* of the session check itself.
+
+```typescript
+const session = await requireSession(request) // request-based — see Patch 2
+await connectDB()
+const user = await User.findOne({ uid: session.uid })
+if (!user || user.role !== 'admin') {
+  return NextResponse.json(
+    { success: false, error: { code: 'FORBIDDEN', message: 'Forbidden' } },
+    { status: 403 }
+  )
+}
+```
+
+## Step-by-step: how an operator actually gets admin access (operational runbook)
+
+This is the actual day-to-day procedure — include it verbatim in project README or onboarding docs, since this caused real confusion during development:
+
+1. Find the target user's Firebase UID (Firebase Console → Authentication → Users, or query by email via `adminAuth.getUserByEmail()`).
+2. Run `npx tsx -r dotenv/config scripts/set-admin-claim.ts <uid> dotenv_config_path=.env.local` (the explicit `dotenv_config_path` is required — `tsx` does not auto-load `.env.local` the way `next dev` does; this caused a full debugging detour and should be called out in the script's own usage error message, not just docs).
+3. The script sets the Firebase custom claim, updates `User.role` in MongoDB, and (per Patch 3) revokes existing refresh tokens for that UID.
+4. The promoted user must log out and log back in (or have their existing session naturally rejected on next request, per Patch 3's revocation) before the new role takes effect anywhere.
+5. Navigate to `/admin` directly in the browser address bar. No further setup required.
+
+## Sidebar/admin section map (per original Task 10, confirmed still the target surface)
+
+`/admin` (dashboard/stats), `/admin/products`, `/admin/products/new`, `/admin/products/[id]`, `/admin/orders`, `/admin/orders/[orderId]`, `/admin/users`, `/admin/audit-log`. `Sidebar.tsx` should link to all of these; confirm none are missing or dead-ended as new admin pages get built out.
+
+---
+
+# PART C — REMAINDER OF ORIGINAL TASK SEQUENCE (corrected)
+
+Resume the original task list (Tasks 0–15) from wherever the existing codebase currently stands, but apply these standing corrections to every remaining task, not just the ones already completed:
+
+- Wherever a task instructs building something under `src/app/**` (page or layout) that needs the current session, import from `lib/session/verify-session`, never `lib/session/get-session` (Patch 2).
+- Wherever a task instructs building an API route under `src/app/api/**`, import from `lib/session/get-session`, and assign rate limiters per the sensitivity table in Patch 4, not by folder convention alone.
+- Any task introducing a new Server Component that needs data also exposed via an API route must extract shared logic into a plain function per Patch 6 — never `fetch()` the app's own relative API path from server-rendered code.
+- Any task introducing a new client-side auth-gated redirect must follow the `useEffect`-based pattern in Patch 7.
+- Task 10 (`AdminLayout`, `/admin/**`) is superseded by the fully-specified version in Part B above — use that version verbatim rather than re-deriving it.
+- Task 13's M-Pesa work and Task 12's Stripe work are unaffected by these patches and proceed as originally specified, with the standing corrections above still applying to any new route/page files they introduce.
+- Before starting any remaining task, re-run the Part A test checkpoints for any patch touching infrastructure that task depends on (e.g. don't start Task 11's Cloudinary work without Patch 8's perf pass already landed, since image-handling code compounds with the existing placeholder-URL issue from 8g).
+
+---
+
+## DELIVERY CHECKLIST (extended)
+
+Original checklist items still apply. Add:
+
+- [ ] No environment-conditional mock logic exists anywhere in `src/lib/session/**` or `src/lib/firebase/**`
+- [ ] Exactly two `getSession`/`requireSession` pairs exist in the codebase, correctly named and correctly scoped (request-based vs. cookies()-based), with no accidental third variant
+- [ ] `scripts/set-admin-claim.ts` revokes refresh tokens after promotion and prints an explicit "log in again" notice
+- [ ] Every `checkRateLimit` call site has a one-line comment justifying its limiter choice
+- [ ] `middleware.ts`/`proxy.ts` declares `export const runtime = 'nodejs'` if it (even transitively) imports Firebase Admin
+- [ ] Zero `fetch('/api/...')` calls exist inside any Server Component
+- [ ] Zero router-navigation or setState calls exist directly in a component's render body (all wrapped in `useEffect`)
+- [ ] No placeholder/example.com image URLs remain anywhere reachable in normal app usage
+- [ ] `npx tsc --noEmit` passes
+- [ ] All Part A test checkpoints pass, in order, on a clean restart of the dev server
 
 ---
 
 ## STARTING INSTRUCTION
 
-Begin with **Task 0**. Build, test per the checkpoint, and summarize before moving to Task 1. Continue sequentially. If a task's checkpoint fails, fix the issue and re-test before proceeding — do not move forward on a failing checkpoint.
+Begin with **Patch 1**. Apply each patch in Part A strictly in order, verifying its checkpoint before moving to the next — several patches depend on the prior one being correctly in place (e.g. Patch 5's runtime fix only matters once Patch 1 makes `verifySessionCookie` real instead of mocked). After Part A is fully verified, proceed to Part C to resume the original task sequence from wherever the codebase currently stands.

@@ -13,7 +13,7 @@ export default function AuthLayout({
   className?: string
 }) {
   return (
-    <div className={`min-h-screen flex items-center justify-center bg-gray-50 ${className}`}>
+    <div className={`min-h-screen flex items-center justify-center  ${className}`}>
       <div className="w-full max-w-md space-y-6 p-4">
         {children}
       </div>

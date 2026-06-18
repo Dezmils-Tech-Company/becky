@@ -31,7 +31,7 @@ export default async function Home(): Promise<React.ReactNode> {
       <header className="border-b border-neutral-100 px-6 py-4">
         <div className="mx-auto max-w-7xl">
           <h1 className="text-2xl font-bold text-pink-600">
-            Becky <span className="text-neutral-900">Hive</span>
+            Beauty <span className="text-neutral-900">Hive</span>
           </h1>
         </div>
       </header>
@@ -43,21 +43,21 @@ export default async function Home(): Promise<React.ReactNode> {
             Explore Our Collection
           </h2>
           <p className="mt-4 text-lg text-neutral-600">
-            Browse thousands of products. Add to cart and checkout with confidence.
+            Browse thousands of beauty products. Add to cart and checkout with confidence.
           </p>
 
-          <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
+          <div className="mt-8 flex items-center justify-center gap-4  ">
             <Link
               href="/products"
-              className="inline-flex items-center justify-center rounded-lg bg-pink-600 px-8 py-3 text-base font-semibold text-white transition hover:bg-pink-700"
+              className="inline-flex items-center justify-center rounded-lg bg-pink-600 px-8 py-3 flex-wrap-reverse text-base font-semibold text-white transition hover:bg-pink-700 "
             >
-              Start Shopping
+              shop now
             </Link>
             <Link
               href="/register"
-              className="inline-flex items-center justify-center rounded-lg border border-neutral-300 px-8 py-3 text-base font-semibold text-neutral-900 transition hover:bg-neutral-50"
+              className="inline-flex items-center justify-center rounded-lg border border-neutral-300 px-8 py-3 text-base font-semibold text-neutral-900 transition hover:bg-neutral-50 "
             >
-              Create Account
+              Sign in
             </Link>
           </div>
         </div>
@@ -68,7 +68,7 @@ export default async function Home(): Promise<React.ReactNode> {
         <div className="mx-auto max-w-7xl">
           <h3 className="text-2xl font-bold text-neutral-900">Featured Products</h3>
           <p className="mt-2 text-sm text-neutral-600">
-            Add items to your cart. Sign in only at checkout to complete payment.
+            Shop with the best today.
           </p>
 
           <div className="mt-8">

@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Search } from 'lucide-react'
 import { Input } from '../ui/Input'
 
 interface ProductFiltersProps {
@@ -10,7 +9,7 @@ interface ProductFiltersProps {
   initialSearch?: string
 }
 
-const CATEGORIES = ['All', 'Skincare', 'Fragrance', 'Bath & Body', 'Accessories']
+const CATEGORIES = ['All', 'Skincare', 'Fragrance', 'Bath & Body', 'Hair Accessories','Outfit and clothing']
 
 /**
  * Sidebar with a category filter and search input. Updates the URL's
@@ -68,8 +67,8 @@ export function ProductFilters({ initialCategory, initialSearch }: ProductFilter
                   onClick={() => updateParams({ category, search: initialSearch })}
                   className={`w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
                     isActive
-                      ? 'bg-pink-50 font-medium text-pink-600'
-                      : 'text-neutral-600 hover:bg-pink-50 hover:text-pink-600'
+                      ? 'bg-pink-50/50 font-medium text-pink-600'
+                      : 'text-neutral-700 hover:bg-pink-50 hover:text-pink-600'
                   }`}
                 >
                   {category}

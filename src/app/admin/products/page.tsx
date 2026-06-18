@@ -1,3 +1,4 @@
+"use client"
 import Link from 'next/link'
 import { useState } from 'react'
 import { Trash2, Edit3 } from 'lucide-react'

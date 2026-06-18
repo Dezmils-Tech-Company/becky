@@ -1,3 +1,5 @@
+"use client"
+
 import useSWR, { SWRConfiguration } from 'swr'
 import { useAuth } from '@/hooks/useAuth'
 import { useEffect, useRef } from 'react'

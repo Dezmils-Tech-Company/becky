@@ -1,22 +1,13 @@
+
 import StatsCard from '@/components/admin/StatsCard'
 import { BarChart2, DollarSign, AlertCircle, Package } from 'lucide-react'
+import { getAdminStats } from '@/lib/admin/get-admin-stats'
 
 export default async function AdminPage() {
-  const res = await fetch('/api/admin/stats', {
-    credentials: 'include'
-  })
-
-  if (!res.ok) {
-    // If not authorized, the layout will redirect
-    return null
-  }
-
-  const data = await res.json()
-  if (!data.success) {
-    return null
-  }
-
-  const { totalOrdersToday, revenueToday, pendingOrders, totalProducts } = data.data
+  // AdminLayout already verified the session and admin role for this route tree,
+  // so we can call the stats logic directly — no HTTP round-trip, no cookie
+  // forwarding needed.
+  const { totalOrdersToday, revenueToday, pendingOrders, totalProducts } = await getAdminStats()
 
   return (
     <div className="p-6">

@@ -4,7 +4,7 @@ import { verifySessionCookie } from './lib/session/verify-session'
 import { SESSION_COOKIE_NAME } from './config/constants'
 import { isDev } from './config/env'
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
 
   // Public paths that don't require authentication
@@ -66,14 +66,16 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  // Admin-specific protections (inline verifySessionCookie + role check for /admin/** page routes)
-  if (pathname.startsWith('/admin/') && !pathname.startsWith('/api/admin/')) {
-    // For admin page routes, check if user is admin
-    if (session.role !== 'admin') {
-      // Redirect non-admins to home page
-      return NextResponse.redirect(new URL('/', req.url))
-    }
-  }
+  // NOTE: Role-based authorization (e.g. admin-only access) is intentionally
+  // NOT checked here. Middleware only confirms a valid session exists.
+  // The Firebase ID token's custom claims (e.g. `admin: true`, set via
+  // scripts/set-admin-claim.ts) are not guaranteed to include a `role` field,
+  // and the authoritative role lives in MongoDB, not the token. Role checks
+  // for /admin/** are performed in src/app/admin/layout.tsx (page routes)
+  // and individually inside each /api/admin/** route handler (API routes),
+  // both of which query MongoDB directly for the current role. This matches
+  // the project's standing rule: middleware enforces auth, route
+  // handlers/layouts enforce role.
 
   // Path-based protections for specific areas
   const protectedPaths = [

@@ -4,12 +4,10 @@ import { GoogleSignInButton, LoginForm } from '@/components/auth'
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen bg-pink-50 px-4 py-10 sm:px-6">
+    <div className="min-h-screen  px-4 py-10 sm:px-6">
       <div className="mx-auto flex w-full max-w-md flex-col rounded-[24px] bg-white p-8 shadow-[0_5px_15px_rgba(0,0,0,0.16)]">
         <div className="text-center">
           <p className="text-sm uppercase tracking-[0.3em] text-pink-500">Welcome back</p>
-          <h1 className="mt-4 text-3xl font-extrabold text-slate-900">Sign in to Becky Hive</h1>
-          <p className="mt-3 text-sm text-slate-500">Enter your details below to continue with your shopping.</p>
         </div>
 
         <div className="mt-10">

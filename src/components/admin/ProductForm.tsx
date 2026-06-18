@@ -1,3 +1,4 @@
+"use client"
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
@@ -6,13 +7,6 @@ import { Textarea } from '@/components/ui/Textarea'
 import { Spinner } from '@/components/ui/Spinner'
 import { useUpload } from '@/hooks/useUpload'
 import { createProductSchema } from '@/schemas/product.schema'
-import { DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT } from '@/config/constants'
-import { connectDB } from '@/lib/mongodb/client'
-import { Product } from '@/models/Product'
-import { writeAuditLog } from '@/lib/audit/logger'
-import { requireSession } from '@/lib/session/get-session'
-import { User } from '@/models'
-import { z } from 'zod'
 
 interface ProductFormProps {
   productId?: string // For editing existing product
@@ -33,17 +27,13 @@ export default function ProductForm({ productId }: ProductFormProps) {
   })
   const { upload: uploadImage, isUploading: isImageUploading, uploadError: imageUploadError, uploadUrl } = useUpload()
 
-  // Load product data if editing
-  // In a real implementation, we would fetch the product data here
-  // For now, we'll leave it as empty form for create, or you could implement fetching
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError(null)
     setIsLoading(true)
 
     try {
-      // Validate form data
+      // Validate form data client-side first for fast feedback
       const parsed = createProductSchema.safeParse(formData)
       if (!parsed.success) {
         const { fieldErrors } = parsed.error.flatten()
@@ -53,60 +43,29 @@ export default function ProductForm({ productId }: ProductFormProps) {
         return
       }
 
-      await connectDB()
-      const session = await requireSession()
-      const user = await User.findOne({ uid: session.uid })
-      if (!user || user.role !== 'admin') {
-        setError('Unauthorized')
+      const payload = {
+        ...parsed.data,
+        imageUrl: uploadUrl || null,
+      }
+
+      const endpoint = productId ? `/api/products/${productId}` : '/api/products'
+      const method = productId ? 'PATCH' : 'POST'
+
+      const res = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        setError(data?.error || 'Failed to save product. Please try again.')
         setIsLoading(false)
         return
       }
 
-      // Prepare product data
-      let productData = { ...parsed.data }
-
-      // Handle image uploads if there are any pending uploads
-      // In a more sophisticated implementation, we would track multiple uploads
-      // For now, we'll handle a single image upload via the uploadUrl state
-      if (uploadUrl) {
-        productData.images = [uploadUrl]
-      } else {
-        // If no image was uploaded, ensure we have an empty array
-        productData.images = []
-      }
-
-      let product
-      if (productId) {
-        // Update existing product
-        product = await Product.findByIdAndUpdate(
-          productId,
-          { ...productData, updatedAt: new Date() },
-          { new: true }
-        )
-      } else {
-        // Create new product
-        product = new Product(productData)
-        await product.save()
-      }
-
-      // Write audit log
-      await writeAuditLog({
-        actor: { uid: user.uid, email: user.email, role: user.role },
-        action: productId ? 'UPDATE' : 'CREATE',
-        resource: 'Product',
-        resourceId: product._id.toString(),
-        meta: {
-          name: product.name,
-          price: product.price,
-          category: product.category,
-          stock: product.stock,
-          isActive: product.isActive
-        }
-      })
-
-      // Redirect to products list
       router.push('/admin/products')
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error saving product:', err)
       setError('Failed to save product. Please try again.')
       setIsLoading(false)
@@ -126,20 +85,12 @@ export default function ProductForm({ productId }: ProductFormProps) {
     }))
   }
 
-  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      // Reset upload state
       setError(null)
-
-      // Upload image to Cloudinary
       const uploadedUrl = await uploadImage(file)
-      if (uploadedUrl) {
-        // In a more sophisticated implementation, we would maintain an array of uploaded images
-        // For now, we'll store the URL in the uploadUrl state which is used in handleSubmit
-        // We could also update formData or maintain a separate state for uploaded images
-        // For simplicity, we'll rely on the uploadUrl state from the hook
-      } else {
+      if (!uploadedUrl) {
         setError('Failed to upload image. Please try again.')
       }
     }

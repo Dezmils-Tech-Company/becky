@@ -2,8 +2,8 @@ import './globals.css'
 import type { ReactNode } from 'react'
 
 export const metadata = {
-  title: 'Beckie E-Commerce',
-  description: 'Modern e-commerce platform built with Next.js, Firebase, and MongoDB'
+  title: 'Beauty Hive',
+  description: 'Your all in one store for beauty and glamour'
 }
 
 export default function RootLayout({
@@ -11,7 +11,7 @@ export default function RootLayout({
 }: Readonly<{
   children: ReactNode
 }>) {
-  return (
+  return ( 
     <html lang="en">
       <body>{children}</body>
     </html>

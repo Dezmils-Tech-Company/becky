@@ -16,7 +16,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       req.headers.get('x-forwarded-for') ||
       req.headers.get('x-real-ip') ||
       'anonymous'
-
     await checkRateLimit(authLimiter, identifier)
 
     // Parse and validate body
@@ -31,7 +30,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (!decodedToken) {
       throw new Error('Failed to verify ID token')
     }
-
     const { uid, email, name, picture } = decodedToken
 
     // Upsert user in MongoDB
@@ -42,8 +40,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         $set: {
           email,
           displayName: name || '',
-          photoURL: picture || undefined,
-          role: 'customer' // Default role; existing users keep their current role
+          photoURL: picture || undefined
+        },
+        $setOnInsert: {
+          role: 'customer' // Only applied when creating a brand-new user document;
+                            // never overwrites an existing user's role on login.
         }
       },
       { upsert: true, new: true }
@@ -70,7 +71,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       path: '/',
       maxAge: SESSION_COOKIE_MAX_AGE
     })
-
     return response
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
@@ -82,7 +82,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         { status: 400 }
       )
     }
-
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'RATE_LIMITED') {
       const headers = 'headers' in error ? (error.headers as Record<string, string>) : {}
       return NextResponse.json(
@@ -90,7 +89,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         { status: 429, headers }
       )
     }
-
     console.error('Login error:', error)
     return NextResponse.json(
       { success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to login' } },

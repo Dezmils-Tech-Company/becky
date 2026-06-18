@@ -6,7 +6,7 @@ import { connectDB } from '../../../../lib/mongodb/client'
 import { User } from '../../../../models'
 import { env } from '../../../../config/env'
 import { SESSION_COOKIE_NAME } from '../../../../config/constants'
-import { authLimiter, checkRateLimit } from '../../../../lib/rate-limit'
+import { apiLimiter, checkRateLimit } from '../../../../lib/rate-limit'
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   // Check rate limit first
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
                     'anonymous'
 
   try {
-    await checkRateLimit(authLimiter, identifier)
+    await checkRateLimit(apiLimiter, identifier)
   } catch (error: unknown) {
     if ((error as any).code === 'RATE_LIMITED') {
       return NextResponse.json(

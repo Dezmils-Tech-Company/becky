@@ -1,3 +1,5 @@
+"use client" 
+
 import Link from 'next/link'
 import { useState } from 'react'
 import { Users2, Edit3 } from 'lucide-react'

@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { Spinner } from '../ui'
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth()
@@ -16,7 +17,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, isLoading])
 
   if (isLoading) {
-    return <div className="min-h-flex items-center justify-center">Loading...</div>
+    return <Spinner/>
   }
 
   return children

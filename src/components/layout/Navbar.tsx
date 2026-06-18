@@ -41,7 +41,7 @@ export function Navbar(): React.ReactNode {
       <PageWrapper className="flex h-16 items-center justify-between">
         <div className="flex items-center gap-6">
           <Link href="/" className="text-lg font-semibold text-neutral-900">
-            Becky <span className="text-pink-600">Hive</span>
+            Beauty <span className="text-pink-600">Hive</span>
           </Link>
 
           <nav className="hidden sm:block" aria-label="Main">

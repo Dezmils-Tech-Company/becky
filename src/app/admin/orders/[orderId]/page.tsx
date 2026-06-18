@@ -1,3 +1,4 @@
+"use client"
 import Link from 'next/link'
 import { useState } from 'react'
 import { Calendar, DollarSign, MapPin, Truck } from 'lucide-react'

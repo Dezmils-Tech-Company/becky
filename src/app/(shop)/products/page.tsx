@@ -37,7 +37,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps):
 
   return (
     <PageWrapper className="py-8">
-      <h1 className="mb-6 text-2xl font-semibold text-neutral-900">Shop</h1>
+      <h1 className="mb-6 text-2xl font-semibold text-neutral-900">Beauty <span className='text-pink-600'>Hive</span></h1>
 
       <div className="flex flex-col gap-6 sm:flex-row">
         <aside className="w-full sm:w-56">

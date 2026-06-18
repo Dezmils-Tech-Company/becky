@@ -1,3 +1,5 @@
+"use client"
+
 import { useState } from 'react'
 import { useOrderStatus } from '@/hooks/useOrderStatus'
 import { useRouter } from 'next/navigation'

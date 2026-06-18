@@ -1,5 +1,6 @@
 #!/usr/bin/env tsx
-
+import dotenv from 'dotenv'
+dotenv.config({ path: '.env.local' })
 import { adminAuth } from '../src/lib/firebase/admin'
 import { connectDB } from '../src/lib/mongodb/client'
 import { User } from '../src/models'

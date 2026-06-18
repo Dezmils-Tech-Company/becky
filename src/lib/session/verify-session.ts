@@ -8,25 +8,8 @@ import { SESSION_COOKIE_NAME } from '@/config/constants'
  */
 export async function verifySessionCookie(sessionCookie: string) {
   try {
-    // In a real implementation, we would verify the session cookie with Firebase Admin SDK
-    // For now, we'll return a mock session for development purposes
-    // TODO: Implement proper session verification with Firebase Admin SDK
-
-    // Mock implementation for development
-    if (process.env.NODE_ENV === 'development') {
-      // Return a mock session
-      return {
-        uid: 'mock-user-id',
-        email: 'mock@example.com',
-        role: 'customer'
-      }
-    }
-
-    // Production implementation would be:
-    // const decodedToken = await adminAuth.verifySessionCookie(sessionCookie)
-    // return decodedToken
-
-    return null
+    const decodedToken = await adminAuth.verifySessionCookie(sessionCookie, true)
+    return decodedToken
   } catch (error) {
     console.error('Error verifying session cookie:', error)
     return null
@@ -34,7 +17,8 @@ export async function verifySessionCookie(sessionCookie: string) {
 }
 
 /**
- * Get the current session from cookies (client-side helper)
+ * Get the current session from cookies (Server Components / layouts)
+ * Reads cookies via next/headers, so it does not need a NextRequest.
  */
 export async function getSession() {
   const cookieStore = await cookies()
@@ -45,4 +29,20 @@ export async function getSession() {
   }
 
   return verifySessionCookie(sessionCookie)
+}
+
+/**
+ * Requires a valid session, throws an UNAUTHORIZED error if not present.
+ * Use in Server Components / layouts (relies on next/headers cookies()).
+ * @returns Promise that resolves to the decoded token
+ * @throws Error with UNAUTHORIZED code if no valid session
+ */
+export async function requireSession() {
+  const session = await getSession()
+  if (!session) {
+    const error = new Error('Unauthorized') as any
+    error.code = 'UNAUTHORIZED'
+    throw error
+  }
+  return session
 }

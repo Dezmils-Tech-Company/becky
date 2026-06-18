@@ -71,7 +71,7 @@ export const RegisterForm = () => {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
         <label htmlFor="displayName" className="block text-sm font-semibold text-slate-700">
           Display name
@@ -146,7 +146,7 @@ export const RegisterForm = () => {
       <Button
         type="submit"
         disabled={loading}
-        className="w-full rounded-[20px] bg-pink-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-pink-500/20 hover:bg-pink-700 focus:ring-pink-400"
+        className="w-full rounded-[20px] bg-pink-600 px-5 py-3 mt-4 text-sm font-bold text-white shadow-lg shadow-pink-500/20 hover:bg-pink-700 focus:ring-pink-400"
       >
         {loading ? (
           <>
